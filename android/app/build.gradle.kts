@@ -1,0 +1,53 @@
+plugins {
+    id("com.android.application")
+    id("kotlin-android")
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+android {
+    namespace = "com.seeknirvana.seeknirvana"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+
+    defaultConfig {
+        applicationId = "com.seeknirvana.seeknirvana"
+        minSdk = 27  // ChipletRing SDK requires API 27+
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    packagingOptions {
+        resources {
+            excludes += "META-INF/rxjava.properties"
+        }
+    }
+}
+
+dependencies {
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+    implementation("com.google.code.gson:gson:2.11.0")
+    implementation("org.jetbrains:annotations:15.0")
+    implementation("org.greenrobot:greendao:3.3.0")
+}
+
+flutter {
+    source = "../.."
+}

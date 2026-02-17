@@ -1,0 +1,59 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:seeknirvana/features/home/home_screen.dart';
+import 'package:seeknirvana/features/vitals/vitals_screen.dart';
+import 'package:seeknirvana/features/sleep/sleep_screen.dart';
+import 'package:seeknirvana/features/profile/profile_screen.dart';
+import 'package:seeknirvana/features/scan/scan_screen.dart';
+import 'package:seeknirvana/features/vitals/ecg_screen.dart';
+import 'package:seeknirvana/shared/widgets/app_scaffold.dart';
+
+final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> _shellNavigatorKey = GlobalKey<NavigatorState>();
+
+final router = GoRouter(
+  navigatorKey: _rootNavigatorKey,
+  initialLocation: '/',
+  routes: [
+    ShellRoute(
+      navigatorKey: _shellNavigatorKey,
+      builder: (context, state, child) => AppScaffold(child: child),
+      routes: [
+        GoRoute(
+          path: '/',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: HomeScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/vitals',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: VitalsScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/sleep',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: SleepScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/profile',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ProfileScreen(),
+          ),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: '/scan',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ScanScreen(),
+    ),
+    GoRoute(
+      path: '/vitals/ecg',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ECGScreen(),
+    ),
+  ],
+);
