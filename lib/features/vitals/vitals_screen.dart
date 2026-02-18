@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/health_provider.dart';
@@ -18,6 +17,7 @@ class VitalsScreen extends ConsumerWidget {
     final hr = hrData['heartRate'] as int? ?? 0;
     final spo2Data = ref.watch(spo2Provider);
     final spo2 = spo2Data['spo2'] as int? ?? 0;
+    final temperature = ref.watch(temperatureProvider);
     final systolic = ref.watch(systolicProvider);
     final diastolic = ref.watch(diastolicProvider);
     final hrHistory = ref.watch(heartRateHistoryProvider);
@@ -55,25 +55,22 @@ class VitalsScreen extends ConsumerWidget {
               ),
             ),
 
-            // Blood Pressure Section
+            // Temperature Section
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: _TemperatureCard(value: temperature, isDark: isDark),
+              ),
+            ),
+
+            // Blood Pressure Section (PPG-based)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 child: _BloodPressureCard(
                   systolic: systolic,
                   diastolic: diastolic,
                   isDark: isDark,
-                ),
-              ),
-            ),
-
-            // ECG Button
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                child: _ECGLaunchCard(
-                  isDark: isDark,
-                  onTap: () => context.push('/vitals/ecg'),
                 ),
               ),
             ),
@@ -378,7 +375,113 @@ class _SpO2Card extends ConsumerWidget {
   }
 }
 
-class _BloodPressureCard extends StatelessWidget {
+class _TemperatureCard extends StatelessWidget {
+  final double value;
+  final bool isDark;
+
+  const _TemperatureCard({required this.value, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasData = value > 0;
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+        border: Border.all(
+          color: AppColors.temperature.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.temperature.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.thermostat_rounded,
+              color: AppColors.temperature,
+              size: 32,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Skin Temperature',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      hasData ? value.toStringAsFixed(1) : '--',
+                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                        color: AppColors.temperature,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '°C',
+                      style: TextStyle(
+                        color: AppColors.temperature.withValues(alpha: 0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      hasData ? _getTempCategory(value) : 'Not measured',
+                      style: TextStyle(
+                        color: hasData ? AppColors.success : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        RingPlugin.startTemperature();
+                      },
+                      icon: const Icon(Icons.play_circle_outline, size: 20),
+                      label: const Text("Measure"),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.temperature,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getTempCategory(double temp) {
+    if (temp < 35.0) return 'Below normal';
+    if (temp <= 37.2) return 'Normal range';
+    if (temp <= 38.0) return 'Slightly elevated';
+    return 'Elevated';
+  }
+}
+
+class _BloodPressureCard extends ConsumerWidget {
   final int systolic;
   final int diastolic;
   final bool isDark;
@@ -390,7 +493,12 @@ class _BloodPressureCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isMeasuring = ref.watch(bpMeasuringProvider);
+    final progress = ref.watch(bpProgressValueProvider);
+    final waveform = ref.watch(ppgWaveformProvider);
+    final hasData = systolic > 0 && diastolic > 0;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -400,62 +508,154 @@ class _BloodPressureCard extends StatelessWidget {
           color: AppColors.bloodPressure.withValues(alpha: 0.2),
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.bloodPressure.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.speed_rounded,
-              color: AppColors.bloodPressure,
-              size: 32,
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Blood Pressure',
-                  style: Theme.of(context).textTheme.titleSmall,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.bloodPressure.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
+                child: isMeasuring
+                    ? Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            value: progress > 0 ? progress / 100 : null,
+                            strokeWidth: 3,
+                            color: AppColors.bloodPressure,
+                            backgroundColor: AppColors.bloodPressure.withValues(alpha: 0.1),
+                          ),
+                          Text(
+                            '$progress%',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.bloodPressure,
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Icon(
+                        Icons.speed_rounded,
+                        color: AppColors.bloodPressure,
+                        size: 32,
+                      ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$systolic/$diastolic',
-                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        color: AppColors.bloodPressure,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      'Blood Pressure',
+                      style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'mmHg',
-                      style: TextStyle(
-                        color: AppColors.bloodPressure.withValues(alpha: 0.7),
-                        fontSize: 12,
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          hasData ? '$systolic/$diastolic' : '--/--',
+                          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                            color: AppColors.bloodPressure,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'mmHg',
+                          style: TextStyle(
+                            color: AppColors.bloodPressure.withValues(alpha: 0.7),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          
+          // PPG Waveform
+          if (isMeasuring && waveform.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 100,
+              child: LineChart(
+                LineChartData(
+                  gridData: const FlGridData(show: false),
+                  titlesData: const FlTitlesData(show: false),
+                  borderData: FlBorderData(show: false),
+                  minY: waveform.reduce((a, b) => a < b ? a : b),
+                  maxY: waveform.reduce((a, b) => a > b ? a : b),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: waveform
+                          .asMap()
+                          .entries
+                          .map((e) => FlSpot(e.key.toDouble(), e.value))
+                          .toList(),
+                      isCurved: true,
+                      color: AppColors.bloodPressure,
+                      barWidth: 2,
+                      isStrokeCapRound: true,
+                      dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: AppColors.bloodPressure.withValues(alpha: 0.1),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  _getBPCategory(systolic, diastolic),
-                  style: const TextStyle(
-                    color: AppColors.success,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+              ),
             ),
+          ],
+
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                isMeasuring
+                    ? 'Acquiring PPG signal...'
+                    : hasData
+                        ? _getBPCategory(systolic, diastolic)
+                        : 'PPG-based estimation',
+                style: TextStyle(
+                  color: hasData
+                      ? AppColors.success
+                      : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: isMeasuring
+                    ? () => RingPlugin.stopBloodPressure()
+                    : () => {
+                          ref.read(bpMeasuringProvider.notifier).state = true,
+                          ref.read(bpProgressValueProvider.notifier).state = 0,
+                          ref.read(ppgWaveformProvider.notifier).state = [],
+                          RingPlugin.startBloodPressure(),
+                        },
+                icon: Icon(
+                  isMeasuring ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                  size: 20,
+                ),
+                label: Text(isMeasuring ? 'Stop' : 'Measure'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.bloodPressure,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -467,74 +667,5 @@ class _BloodPressureCard extends StatelessWidget {
     if (sys < 130 && dia < 80) return 'Elevated';
     if (sys < 140 || dia < 90) return 'High (Stage 1)';
     return 'High (Stage 2)';
-  }
-}
-
-class _ECGLaunchCard extends StatelessWidget {
-  final bool isDark;
-  final VoidCallback onTap;
-
-  const _ECGLaunchCard({required this.isDark, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppColors.ecg.withValues(alpha: 0.15),
-              AppColors.ecg.withValues(alpha: 0.05),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(AppConstants.radiusXL),
-          border: Border.all(
-            color: AppColors.ecg.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.ecg.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.monitor_heart_rounded,
-                color: AppColors.ecg,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ECG Recording',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.ecg,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Record and view your electrocardiogram',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: AppColors.ecg.withValues(alpha: 0.5),
-              size: 18,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

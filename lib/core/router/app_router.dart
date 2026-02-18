@@ -5,7 +5,6 @@ import 'package:seeknirvana/features/vitals/vitals_screen.dart';
 import 'package:seeknirvana/features/sleep/sleep_screen.dart';
 import 'package:seeknirvana/features/profile/profile_screen.dart';
 import 'package:seeknirvana/features/scan/scan_screen.dart';
-import 'package:seeknirvana/features/vitals/ecg_screen.dart';
 import 'package:seeknirvana/shared/widgets/app_scaffold.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -49,11 +48,6 @@ final router = GoRouter(
       path: '/scan',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const ScanScreen(),
-    ),
-    GoRoute(
-      path: '/vitals/ecg',
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const ECGScreen(),
     ),
   ],
 );

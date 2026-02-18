@@ -18,6 +18,9 @@ import com.lm.sdk.inter.IResponseListener
 import com.lm.sdk.inter.IHeartListener
 import com.lm.sdk.inter.IQ2Listener
 import com.lm.sdk.inter.IHistoryListener
+import com.lm.sdk.inter.ITempListener
+import com.lm.sdk.inter.IBloodPressureListener
+import com.lm.sdk.mode.GreenAndIrBean
 import com.lm.sdk.mode.SystemControlBean
 import com.lm.sdk.mode.HistoryDataBean
 import com.lm.sdk.utils.BLEUtils
@@ -51,6 +54,9 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private val scannedDevices = mutableListOf<Map<String, Any?>>()
     private var connectedMac: String? = null
 
+    // Queued events that arrived before the Flutter stream was ready
+    private val pendingHealthEvents = mutableListOf<Map<String, Any?>>()
+
     // ─── FlutterPlugin ────────────────────────────────────────
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -73,11 +79,19 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
         healthEventChannel = EventChannel(binding.binaryMessenger, HEALTH_CHANNEL)
         healthEventChannel.setStreamHandler(object : EventChannel.StreamHandler {
-            override fun onListen(args: Any?, sink: EventChannel.EventSink?) { healthEventSink = sink }
+            override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+                healthEventSink = sink
+                // Flush any pending events that arrived before Flutter subscribed
+                if (sink != null && pendingHealthEvents.isNotEmpty()) {
+                    Log.d(TAG, "Flushing ${pendingHealthEvents.size} pending health events")
+                    for (event in pendingHealthEvents) {
+                        sink.success(event)
+                    }
+                    pendingHealthEvents.clear()
+                }
+            }
             override fun onCancel(args: Any?) { healthEventSink = null }
         })
-
-        // NOTE: SDK listener is registered in onAttachedToActivity after LmAPI.init()
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -89,7 +103,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
-        // Initialize SDK with the Application context, then register our listener
         try {
             LmAPI.init(binding.activity.application)
             LmAPI.addWLSCmdListener(binding.activity, this)
@@ -118,7 +131,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "startScan" -> {
                 scannedDevices.clear()
                 if (activity != null) {
-                    // 1. Check already connected devices (resilience against app restarts)
                     val btManager = activity.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager
                     val connected = btManager?.getConnectedDevices(android.bluetooth.BluetoothProfile.GATT)
                     connected?.forEach { device ->
@@ -137,8 +149,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     if (scannedDevices.isNotEmpty()) {
                         scanEventSink?.success(scannedDevices.toList())
                     }
-
-                    // 2. Start scanning for advertising devices
                     BLEUtils.startLeScan(activity, leScanCallback)
                     sendConnectionState("scanning")
                 }
@@ -160,24 +170,10 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     try {
                         val remote = adapter.getRemoteDevice(mac)
                         Log.i(TAG, "Connecting to $mac, bondState=${remote.bondState}")
-                        
-                        // Stop scanning first
                         BLEUtils.stopLeScan(activity, leScanCallback)
                         sendConnectionState("connecting")
-                        
-                        // Check if already connected?
-                        // SDK's BLEUtils.connectLockByBLE handles connection.
-                        
-                        // Remove any existing bond (critical for SDK connection)
-                        // Only remove bond if NOT already connected? 
-                        // Actually, if we are rescheduling a connect, let's just proceed.
-                        // But if it IS connected to OS, removeBond might fail or be weird.
-                        // Let's stick to the flow that worked: removeBond -> connect.
-                        
                         BLEUtils.removeBond(remote)
                         Log.i(TAG, "Bond removed, initiating SDK connection...")
-                        
-                        // Small delay after removing bond before connecting
                         mainHandler.postDelayed({
                             Log.i(TAG, "Calling connectLockByBLE for $mac")
                             BLEUtils.connectLockByBLE(activity, remote)
@@ -207,7 +203,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "getVersion" -> {
                 Log.d(TAG, "MethodChannel: getVersion called")
                 LmAPI.GET_VERSION(0x00.toByte())
-                // Keep the delayed call as it might be needed for some FW versions
                 mainHandler.postDelayed({ LmAPI.GET_VERSION(0x01.toByte()) }, 200)
                 result.success(null)
             }
@@ -239,6 +234,25 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "stopSpO2" -> {
                 Log.d(TAG, "MethodChannel: stopSpO2 called")
                 LmAPI.GET_HEART_Q2(0x00.toByte(), spo2Listener)
+                result.success(null)
+            }
+            "startBloodPressure" -> {
+                Log.d(TAG, "MethodChannel: startBloodPressure called")
+                // GET_BLOOD_PRESSURE_M(mode, gender, age, height_cm, weight_kg, calibration, listener)
+                LmAPI.GET_BLOOD_PRESSURE_M(
+                    0x01.toByte(), 0x01.toByte(), 30.toByte(),
+                    170.toByte(), 70.toByte(), 0x00.toByte(), bpListener
+                )
+                result.success(null)
+            }
+            "stopBloodPressure" -> {
+                Log.d(TAG, "MethodChannel: stopBloodPressure called")
+                LmAPI.STOP_BLOOD_PRESSURE_M()
+                result.success(null)
+            }
+            "startTemperature" -> {
+                Log.d(TAG, "MethodChannel: startTemperature called")
+                LmAPI.READ_TEMP(tempListener)
                 result.success(null)
             }
             "readHistory" -> {
@@ -288,10 +302,17 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             sendHealthData("heartRateProgress", mapOf("progress" to progress))
         }
         override fun resultData(heart: Int, heartRota: Int, yaLi: Int, temp: Int) {
-            Log.d(TAG, "Heart Rate Data: HR=$heart, HRV=$heartRota")
+            Log.d(TAG, "Heart Rate Data: HR=$heart, HRV=$heartRota, stress=$yaLi, temp=$temp")
+            // Temperature from HR callback is *100 (e.g., 3638 = 36.38°C)
+            // Normalize to *10 format for consistency (3638 -> 364)
+            val normalizedTemp = if (temp > 1000) temp / 10 else temp
             sendHealthData("heartRate", mapOf(
-                "heartRate" to heart, "hrv" to heartRota, "stress" to yaLi, "temperature" to temp
+                "heartRate" to heart, "hrv" to heartRota, "stress" to yaLi, "temperature" to normalizedTemp
             ))
+            // Forward temperature separately for the temperature card
+            if (temp > 0) {
+                sendHealthData("temperature", mapOf("temperature" to normalizedTemp))
+            }
         }
         override fun waveformData(seq: Byte, number: Byte, waveData: String?) {
             if (waveData != null) sendHealthData("heartWaveform", mapOf("data" to waveData))
@@ -304,7 +325,7 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             sendHealthData("heartRateError", mapOf("code" to code))
         }
         override fun success() {
-            Log.d(TAG, "Heart Rate Listener Success")
+            Log.d(TAG, "Heart Rate Listener Success (measurement complete)")
             sendHealthData("heartRateComplete", emptyMap<String, Any>())
         }
     }
@@ -316,8 +337,14 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             sendHealthData("spo2Progress", mapOf("progress" to progress))
         }
         override fun resultData(heart: Int, q2: Int, temp: Int) {
-            Log.d(TAG, "SpO2 Data: HR=$heart, SpO2=$q2")
-            sendHealthData("spo2", mapOf("heartRate" to heart, "spo2" to q2, "temperature" to temp))
+            Log.d(TAG, "SpO2 Data: HR=$heart, SpO2=$q2, temp=$temp")
+            // Temperature from SpO2 callback is *100, normalize to *10
+            val normalizedTemp = if (temp > 1000) temp / 10 else temp
+            sendHealthData("spo2", mapOf("heartRate" to heart, "spo2" to q2, "temperature" to normalizedTemp))
+            // Forward normalized temperature
+            if (temp > 0) {
+                sendHealthData("temperature", mapOf("temperature" to normalizedTemp))
+            }
         }
         override fun waveformData(seq: Byte, number: Byte, waveData: String?) {
             if (waveData != null) sendHealthData("spo2Waveform", mapOf("data" to waveData))
@@ -327,8 +354,65 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             sendHealthData("spo2Error", mapOf("code" to code))
         }
         override fun success() {
-            Log.d(TAG, "SpO2 Listener Success")
+            Log.d(TAG, "SpO2 Listener Success (measurement complete)")
             sendHealthData("spo2Complete", emptyMap<String, Any>())
+        }
+    }
+
+    // ─── Temperature Listener ─────────────────────────────────
+
+    private val tempListener = object : ITempListener {
+        override fun resultData(temp: Int) {
+            Log.d(TAG, "Temperature result: $temp (raw value, divide by 10 for °C)")
+            // The SDK returns temperature * 10 (e.g., 365 = 36.5°C)
+            sendHealthData("temperature", mapOf("temperature" to temp))
+        }
+        override fun testing(temp: Int) {
+            Log.d(TAG, "Temperature testing: $temp")
+            sendHealthData("temperatureTesting", mapOf("temperature" to temp))
+        }
+        override fun error(code: Int) {
+            Log.e(TAG, "Temperature Error: $code")
+            sendHealthData("temperatureError", mapOf("code" to code))
+        }
+    }
+
+    // ─── Blood Pressure Listener (PPG-based) ─────────────────
+
+    private val bpListener = object : IBloodPressureListener {
+        override fun progress(progress: Int) {
+            Log.d(TAG, "BP progress: $progress%")
+            sendHealthData("bpProgress", mapOf("progress" to progress))
+        }
+        override fun error(code: Byte) {
+            Log.e(TAG, "BP measurement error: $code")
+            sendHealthData("bpError", mapOf("code" to code.toInt()))
+        }
+        override fun waveformData(seq: Byte, number: Byte, waveData: String?) {
+            if (waveData != null) {
+                // PPG waveform data — forward to Flutter for display
+                sendHealthData("bpWaveform", mapOf(
+                    "seq" to seq.toInt(),
+                    "count" to number.toInt(),
+                    "data" to waveData
+                ))
+            }
+        }
+        override fun bpResultData(bean: GreenAndIrBean?) {
+            if (bean != null) {
+                Log.d(TAG, "BP result data: $bean")
+                // Extract green LED data for PPG waveform display
+                sendHealthData("bpResult", mapOf(
+                    "green1_B" to bean.green1_B,
+                    "green1_C" to bean.green1_C,
+                    "green1_D" to bean.green1_D,
+                    "green1_E" to bean.green1_E,
+                    "ir1_B" to bean.ir1_B,
+                    "ir1_C" to bean.ir1_C,
+                    "ir1_D" to bean.ir1_D,
+                    "ir1_E" to bean.ir1_E
+                ))
+            }
         }
     }
 
@@ -342,7 +426,21 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             sendHealthData("historyComplete", emptyMap<String, Any>())
         }
         override fun progress(progress: Double, historyDataBean: HistoryDataBean?) {
-            sendHealthData("historyProgress", mapOf("progress" to progress))
+            val bean = historyDataBean ?: return
+            val record = mapOf(
+                "progress" to progress,
+                "time" to bean.time,
+                "heartRate" to bean.heartRate,
+                "bloodOxygen" to bean.bloodOxygen,
+                "hrv" to bean.heartRateVariability,
+                "stress" to bean.stressIndex,
+                "temperature" to bean.temperature,
+                "steps" to bean.stepCount,
+                "sleepType" to bean.sleepType,
+                "exerciseIntensity" to bean.exerciseIntensity
+            )
+            Log.d(TAG, "History record: time=${bean.time}, sleep=${bean.sleepType}, HR=${bean.heartRate}")
+            sendHealthData("historyData", record)
         }
     }
 
@@ -358,9 +456,31 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         if (code == 7) {
             BLEUtils.setGetToken(true)
             sendConnectionState("connected")
-            mainHandler.postDelayed({ LmAPI.GET_BATTERY(0x00.toByte()) }, 500)
-            mainHandler.postDelayed({ LmAPI.GET_VERSION(0x00.toByte()) }, 1000)
-            mainHandler.postDelayed({ LmAPI.SYNC_TIME() }, 1500)
+            // Request device info after connection — stagger to avoid command overlap
+            mainHandler.postDelayed({
+                Log.d(TAG, "Auto-requesting battery after connect")
+                LmAPI.GET_BATTERY(0x00.toByte())
+            }, 500)
+            mainHandler.postDelayed({
+                Log.d(TAG, "Auto-requesting version after connect")
+                LmAPI.GET_VERSION(0x00.toByte())
+            }, 1000)
+            mainHandler.postDelayed({
+                Log.d(TAG, "Auto-requesting version type 1 after connect")
+                LmAPI.GET_VERSION(0x01.toByte())
+            }, 1200)
+            mainHandler.postDelayed({
+                Log.d(TAG, "Auto-syncing time after connect")
+                LmAPI.SYNC_TIME()
+            }, 1500)
+            mainHandler.postDelayed({
+                Log.d(TAG, "Auto-requesting steps after connect")
+                LmAPI.STEP_COUNTING()
+            }, 2000)
+            mainHandler.postDelayed({
+                Log.d(TAG, "Auto-syncing history after connect")
+                LmAPI.READ_HISTORY(0x00.toByte(), historyListener)
+            }, 4000)
         }
     }
 
@@ -372,8 +492,8 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     }
 
     override fun VERSION(type: Byte, version: String?) {
-        Log.d(TAG, "Received Version Callback: $version (type=$type)")
-        if (version != null) sendHealthData("version", mapOf("type" to type.toInt(), "version" to version))
+        Log.d(TAG, "Received Version Callback: '$version' (type=$type)")
+        if (version != null) sendHealthData("version", mapOf("versionType" to type.toInt(), "version" to version))
     }
 
     override fun syncTime(datum: Byte, time: ByteArray?) {
@@ -381,19 +501,23 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     }
 
     override fun stepCount(bytes: ByteArray?) {
-        if (bytes != null) sendHealthData("steps", mapOf("steps" to ConvertUtils.BytesToInt(bytes)))
+        if (bytes != null) {
+            val steps = ConvertUtils.BytesToInt(bytes)
+            Log.d(TAG, "Step count received: $steps")
+            sendHealthData("steps", mapOf("steps" to steps))
+        }
     }
 
     override fun clearStepCount(data: Byte) {}
 
     override fun battery(b: Byte, level: Byte) {
-        Log.d(TAG, "Received Battery Callback: $level% (charging=${b.toInt() == 1})")
-        sendHealthData("battery", mapOf("isCharging" to (b.toInt() == 1), "level" to level.toInt()))
+        Log.d(TAG, "Received Battery Callback: ${level.toInt() and 0xFF}% (charging=${b.toInt() == 1})")
+        sendHealthData("battery", mapOf("isCharging" to (b.toInt() == 1), "level" to (level.toInt() and 0xFF)))
     }
 
     override fun battery_push(b: Byte, level: Byte) {
-        Log.d(TAG, "Received Battery Push: $level% (charging=${b.toInt() == 1})")
-        sendHealthData("battery", mapOf("isCharging" to (b.toInt() == 1), "level" to level.toInt()))
+        Log.d(TAG, "Received Battery Push: ${level.toInt() and 0xFF}% (charging=${b.toInt() == 1})")
+        sendHealthData("battery", mapOf("isCharging" to (b.toInt() == 1), "level" to (level.toInt() and 0xFF)))
     }
 
     override fun timeOut() {}
@@ -418,9 +542,11 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     override fun setAudio(totalLength: Short, index: Int, audioData: ByteArray?) {}
     override fun stopHeart(data: Byte) {}
     override fun stopQ2(data: Byte) {}
+
     override fun GET_ECG(bytes: ByteArray?) {
-        if (bytes != null) sendHealthData("ecg", mapOf("data" to bytes.map { it.toInt() }))
+        // ECG not supported by this ring hardware
     }
+
     override fun appBind(bean: SystemControlBean?) {}
     override fun appConnect(bean: SystemControlBean?) {}
     override fun appRefresh(bean: SystemControlBean?) {}
@@ -437,6 +563,16 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     }
 
     private fun sendHealthData(type: String, data: Map<String, Any?>) {
-        mainHandler.post { healthEventSink?.success(mapOf("type" to type) + data) }
+        val event = mapOf("type" to type) + data
+        mainHandler.post {
+            val sink = healthEventSink
+            if (sink != null) {
+                sink.success(event)
+            } else {
+                // Queue events that arrive before Flutter subscribes to the stream
+                Log.w(TAG, "healthEventSink is null, queuing event: $type")
+                pendingHealthEvents.add(event)
+            }
+        }
     }
 }

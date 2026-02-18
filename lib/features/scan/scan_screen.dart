@@ -216,19 +216,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
     // Connect via native SDK
     RingPlugin.connect(device.macAddress);
 
-    // Listen for health data (battery, version) after connection
-    RingPlugin.rawHealthData.listen((data) {
-      if (!mounted) return;
-      final type = data['type'] as String?;
-      switch (type) {
-        case 'battery':
-          ref.read(batteryLevelProvider.notifier).state = (data['level'] as int?) ?? 0;
-          break;
-        case 'version':
-          ref.read(firmwareVersionProvider.notifier).state = (data['version'] as String?) ?? '';
-          break;
-      }
-    });
+    // NOTE: Battery/version updates are handled globally by RingDataService.
+    // Do NOT add a rawHealthData listener here—it would duplicate the global one.
 
     // Listen for connection state
     // Listen for connection state and navigate back

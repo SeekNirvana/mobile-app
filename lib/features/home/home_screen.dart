@@ -22,7 +22,9 @@ class HomeScreen extends ConsumerWidget {
     final steps = ref.watch(stepsProvider);
     final stepGoal = ref.watch(stepGoalProvider);
     final temp = ref.watch(temperatureProvider);
-    final calories = ref.watch(caloriesProvider);
+    final hrv = ref.watch(hrvProvider);
+    final stress = ref.watch(stressProvider);
+    final sleepDuration = ref.watch(sleepDurationProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -83,50 +85,51 @@ class HomeScreen extends ConsumerWidget {
                 delegate: SliverChildListDelegate([
                   HealthCard(
                     title: 'Heart Rate',
-                    value: '$hr',
+                    value: hr > 0 ? '$hr' : '--',
                     unit: 'BPM',
-                    subtitle: 'Resting',
+                    subtitle: hr > 0 ? 'Resting' : 'Not measured',
                     icon: Icons.favorite_rounded,
                     color: AppColors.heartRate,
                     onTap: () => context.go('/vitals'),
                   ),
                   HealthCard(
                     title: 'SpO2',
-                    value: '$spo2',
+                    value: spo2 > 0 ? '$spo2' : '--',
                     unit: '%',
-                    subtitle: 'Normal',
+                    subtitle: spo2 > 0 ? (spo2 >= 95 ? 'Normal' : 'Low') : 'Not measured',
                     icon: Icons.water_drop_rounded,
                     color: AppColors.spo2,
                     onTap: () => context.go('/vitals'),
                   ),
                   HealthCard(
                     title: 'Steps',
-                    value: _formatSteps(steps),
-                    subtitle: '${((steps / stepGoal) * 100).round()}% of goal',
+                    value: steps > 0 ? _formatSteps(steps) : '--',
+                    subtitle: steps > 0 ? '${((steps / stepGoal) * 100).round()}% of goal' : 'Not synced',
                     icon: Icons.directions_walk_rounded,
                     color: AppColors.steps,
                   ),
                   HealthCard(
                     title: 'Temperature',
-                    value: temp.toStringAsFixed(1),
+                    value: temp > 0 ? temp.toStringAsFixed(1) : '--',
                     unit: '°C',
-                    subtitle: 'Normal range',
+                    subtitle: temp > 0 ? 'Normal range' : 'Not measured',
                     icon: Icons.thermostat_rounded,
                     color: AppColors.temperature,
+                    onTap: () => context.go('/vitals'),
                   ),
                   HealthCard(
-                    title: 'Calories',
-                    value: '$calories',
-                    unit: 'kcal',
-                    subtitle: 'Active burn',
-                    icon: Icons.local_fire_department_rounded,
-                    color: AppColors.calories,
+                    title: 'HRV',
+                    value: hrv > 0 ? '$hrv' : '--',
+                    unit: 'ms',
+                    subtitle: hrv > 0 ? (hrv >= 50 ? 'Good' : 'Low') : 'Not measured',
+                    icon: Icons.timeline_rounded,
+                    color: AppColors.hrv,
                   ),
                   HealthCard(
                     title: 'Sleep',
-                    value: ref.watch(sleepDurationProvider).toStringAsFixed(1),
+                    value: sleepDuration > 0 ? sleepDuration.toStringAsFixed(1) : '--',
                     unit: 'hrs',
-                    subtitle: 'Score: ${ref.watch(sleepScoreProvider)}',
+                    subtitle: sleepDuration > 0 ? 'Last night' : 'Not synced',
                     icon: Icons.bedtime_rounded,
                     color: AppColors.sleep,
                     onTap: () => context.go('/sleep'),

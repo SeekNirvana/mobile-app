@@ -2,18 +2,23 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'models/scanned_device.dart';
 import 'models/ring_connection_state.dart';
-import 'models/health_data_point.dart';
 
-/// Flutter plugin bridge to the native ChipletRing SDK.
+/// Flutter plugin bridge to the native NirvanaRing SDK.
 ///
 /// Uses MethodChannel for commands and EventChannel for streams.
-/// Android: wraps ChipletRing.aar (com.lm.sdk.*)
+/// Android: wraps NirvanaRing .aar (com.lm.sdk.*)
 /// iOS: wraps BCLRingSDK.xcframework
 class RingPlugin {
   static const MethodChannel _channel = MethodChannel('com.seeknirvana.app/ring');
   static const EventChannel _scanChannel = EventChannel('com.seeknirvana.app/ring/scan');
   static const EventChannel _connectionChannel = EventChannel('com.seeknirvana.app/ring/connection');
   static const EventChannel _healthChannel = EventChannel('com.seeknirvana.app/ring/health');
+
+  // Cached broadcast streams — EventChannel only supports ONE receiveBroadcastStream() call.
+  // By caching the result, multiple listeners can safely subscribe.
+  static Stream<List<ScannedDevice>>? _scanStream;
+  static Stream<RingConnectionState>? _connectionStream;
+  static Stream<Map<String, dynamic>>? _healthStream;
 
   // ── Scanning ──
 
@@ -26,10 +31,11 @@ class RingPlugin {
   }
 
   static Stream<List<ScannedDevice>> get scanResults {
-    return _scanChannel.receiveBroadcastStream().map((event) {
+    _scanStream ??= _scanChannel.receiveBroadcastStream().map((event) {
       final list = (event as List).cast<Map>();
       return list.map((e) => ScannedDevice.fromMap(Map<String, dynamic>.from(e))).toList();
-    });
+    }).asBroadcastStream();
+    return _scanStream!;
   }
 
   // ── Connection ──
@@ -51,9 +57,10 @@ class RingPlugin {
   }
 
   static Stream<RingConnectionState> get connectionState {
-    return _connectionChannel.receiveBroadcastStream().map((event) {
+    _connectionStream ??= _connectionChannel.receiveBroadcastStream().map((event) {
       return RingConnectionState.fromString(event as String);
-    });
+    }).asBroadcastStream();
+    return _connectionStream!;
   }
 
   // ── Device Info ──
@@ -70,9 +77,8 @@ class RingPlugin {
     await _channel.invokeMethod('syncTime');
   }
 
-  static Future<int> getSteps() async {
-    final result = await _channel.invokeMethod<int>('getSteps');
-    return result ?? 0;
+  static Future<void> getSteps() async {
+    await _channel.invokeMethod('getSteps');
   }
 
   // ── Health Measurements ──
@@ -85,12 +91,12 @@ class RingPlugin {
     await _channel.invokeMethod('stopHeartRate');
   }
 
-  static Future<void> startBloodOxygen() async {
-    await _channel.invokeMethod('startBloodOxygen');
+  static Future<void> startSpO2() async {
+    await _channel.invokeMethod('startSpO2');
   }
 
-  static Future<void> stopBloodOxygen() async {
-    await _channel.invokeMethod('stopBloodOxygen');
+  static Future<void> stopSpO2() async {
+    await _channel.invokeMethod('stopSpO2');
   }
 
   static Future<void> startBloodPressure() async {
@@ -101,53 +107,17 @@ class RingPlugin {
     await _channel.invokeMethod('stopBloodPressure');
   }
 
-  static Future<void> startECG() async {
-    await _channel.invokeMethod('startECG');
-  }
-
-  static Future<void> stopECG() async {
-    await _channel.invokeMethod('stopECG');
-  }
-
   static Future<void> startTemperature() async {
     await _channel.invokeMethod('startTemperature');
   }
 
-  static Future<void> startBloodGlucose() async {
-    await _channel.invokeMethod('startBloodGlucose');
-  }
+  // ── Health Data Stream (single cached broadcast stream) ──
 
-  static Future<void> stopBloodGlucose() async {
-    await _channel.invokeMethod('stopBloodGlucose');
-  }
-
-  // ── Health Data Stream ──
-
-  static Stream<HealthDataPoint> get healthData {
-    return _healthChannel.receiveBroadcastStream().map((event) {
-      return HealthDataPoint.fromMap(Map<String, dynamic>.from(event as Map));
-    });
-  }
-
-  /// Raw health data stream for direct map access (battery, version, etc.)
   static Stream<Map<String, dynamic>> get rawHealthData {
-    return _healthChannel.receiveBroadcastStream().map((event) {
+    _healthStream ??= _healthChannel.receiveBroadcastStream().map((event) {
       return Map<String, dynamic>.from(event as Map);
-    });
-  }
-
-  // ── Sleep Data ──
-
-  static Future<Map<String, dynamic>?> getSleepData() async {
-    final result = await _channel.invokeMethod<Map>('getSleepData');
-    if (result == null) return null;
-    return Map<String, dynamic>.from(result);
-  }
-
-  // ── Firmware ──
-
-  static Future<void> startOTA(String filePath) async {
-    await _channel.invokeMethod('startOTA', {'filePath': filePath});
+    }).asBroadcastStream();
+    return _healthStream!;
   }
 
   // ── History ──
@@ -155,13 +125,4 @@ class RingPlugin {
   static Future<void> readHistory() async {
     await _channel.invokeMethod('readHistory');
   }
-
-  static Future<void> startSpO2() async {
-    await _channel.invokeMethod('startSpO2');
-  }
-
-  static Future<void> stopSpO2() async {
-    await _channel.invokeMethod('stopSpO2');
-  }
 }
-
