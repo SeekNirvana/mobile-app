@@ -6,6 +6,7 @@ import '../../providers/ring_provider.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
 import '../../plugins/ring_sdk/models/scanned_device.dart';
 import '../../plugins/ring_sdk/models/ring_connection_state.dart';
+import '../../services/ring_connection_service.dart';
 
 class ScanScreen extends ConsumerStatefulWidget {
   const ScanScreen({super.key});
@@ -85,9 +86,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
   }
 
   void _disconnect() {
-    RingPlugin.disconnect();
-    ref.read(connectedDeviceProvider.notifier).state = null;
-    ref.read(ringConnectionStateProvider.notifier).state = RingConnectionState.disconnected;
+    // Use explicit disconnect to clear saved device
+    ref.read(ringConnectionServiceProvider).explicitDisconnect();
     ref.read(batteryLevelProvider.notifier).state = 0;
     ref.read(firmwareVersionProvider.notifier).state = '';
     _startRealScan();

@@ -33,7 +33,10 @@ class HealthCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: isLarge ? AppConstants.cardHeight : AppConstants.cardHeightSmall,
+        // Remove fixed height to allow flexible sizing
+        constraints: BoxConstraints(
+          minHeight: isLarge ? 140 : 100,
+        ),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,

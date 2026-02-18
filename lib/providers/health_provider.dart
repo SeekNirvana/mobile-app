@@ -17,6 +17,9 @@ final spo2Provider = StateProvider<Map<String, dynamic>>((ref) {
 // Temperature (from ring, when available)
 final temperatureProvider = StateProvider<double>((ref) => 0.0);
 
+// Temperature measurement in progress
+final temperatureMeasuringProvider = StateProvider<bool>((ref) => false);
+
 // Steps from ring
 final stepsProvider = StateProvider<int>((ref) => 0);
 final stepGoalProvider = StateProvider<int>((ref) => 10000);

@@ -6,6 +6,7 @@ import '../../core/constants/app_constants.dart';
 import '../../providers/health_provider.dart';
 import '../../providers/ring_provider.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
+import '../../services/rem_audio_service.dart';
 
 class SleepScreen extends ConsumerStatefulWidget {
   const SleepScreen({super.key});
@@ -15,20 +16,17 @@ class SleepScreen extends ConsumerStatefulWidget {
 }
 
 class _SleepScreenState extends ConsumerState<SleepScreen> {
-  // Lucid dreaming settings
-  bool _lucidDreamingEnabled = false;
-  double _remAudioVolume = 0.5;
-  String _selectedSound = 'Gentle Chime';
-  final List<String> _availableSounds = [
-    'Gentle Chime',
-    'Tibetan Bowl',
-    'Soft Whisper',
-    'Binaural Beat',
-    'Custom Audio',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Initialize REM audio service
+    ref.read(remAudioServiceProvider);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final audioSettings = ref.watch(remAudioSettingsProvider);
+    final remAudio = ref.read(remAudioServiceProvider);
     final deepSleep = ref.watch(deepSleepMinutesProvider);
     final lightSleep = ref.watch(lightSleepMinutesProvider);
     final remSleep = ref.watch(remSleepMinutesProvider);
@@ -144,24 +142,26 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: _LucidDreamingCard(
-                  enabled: _lucidDreamingEnabled,
-                  onToggle: (val) => setState(() => _lucidDreamingEnabled = val),
+                  enabled: audioSettings.enabled,
+                  onToggle: (val) => remAudio.setEnabled(val),
                   isDark: isDark,
                 ),
               ),
             ),
 
-            if (_lucidDreamingEnabled) ...[
+            if (audioSettings.enabled) ...[
               // Sound Selection
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                   child: _SoundSelectionCard(
-                    selectedSound: _selectedSound,
-                    sounds: _availableSounds,
-                    volume: _remAudioVolume,
-                    onSoundChanged: (s) => setState(() => _selectedSound = s),
-                    onVolumeChanged: (v) => setState(() => _remAudioVolume = v),
+                    selectedSound: audioSettings.selectedSound,
+                    sounds: audioSettings.availableSounds,
+                    volume: audioSettings.volume,
+                    onSoundChanged: (s) => remAudio.setSound(s),
+                    onVolumeChanged: (v) => remAudio.setVolume(v),
+                    onTestPlay: () => remAudio.testPlay(),
+                    isPlaying: audioSettings.isPlaying,
                     isDark: isDark,
                   ),
                 ),
@@ -558,7 +558,7 @@ class _LucidDreamingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: enabled
             ? LinearGradient(
@@ -579,39 +579,46 @@ class _LucidDreamingCard extends StatelessWidget {
         ),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: AppColors.sleepREM.withValues(alpha: enabled ? 0.25 : 0.1),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               Icons.auto_awesome_rounded,
               color: enabled ? AppColors.sleepREM : Colors.grey,
-              size: 28,
+              size: 24,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   'Lucid Dream Mode',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: enabled ? AppColors.sleepREM : null,
+                    fontSize: 15,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   enabled
-                      ? 'Audio cues will play when REM is detected'
-                      : 'Play gentle audio during REM sleep to trigger awareness',
+                      ? 'Audio cues play during REM'
+                      : 'Audio triggers for REM sleep',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                    fontSize: 12,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ],
             ),
@@ -635,6 +642,8 @@ class _SoundSelectionCard extends StatelessWidget {
   final double volume;
   final ValueChanged<String> onSoundChanged;
   final ValueChanged<double> onVolumeChanged;
+  final VoidCallback? onTestPlay;
+  final bool isPlaying;
   final bool isDark;
 
   const _SoundSelectionCard({
@@ -643,6 +652,8 @@ class _SoundSelectionCard extends StatelessWidget {
     required this.volume,
     required this.onSoundChanged,
     required this.onVolumeChanged,
+    this.onTestPlay,
+    this.isPlaying = false,
     required this.isDark,
   });
 
@@ -737,6 +748,26 @@ class _SoundSelectionCard extends StatelessWidget {
               'Volume: ${(volume * 100).round()}%',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.sleepREM.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Test play button
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: isPlaying ? null : onTestPlay,
+              icon: isPlaying
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.sleepREM),
+                    )
+                  : const Icon(Icons.play_arrow_rounded, size: 20),
+              label: Text(isPlaying ? 'Playing...' : 'Test Sound'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.sleepREM,
+                side: BorderSide(color: AppColors.sleepREM.withValues(alpha: 0.5)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ),

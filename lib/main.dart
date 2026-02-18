@@ -5,6 +5,7 @@ import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'providers/theme_provider.dart';
 import 'services/ring_data_service.dart';
+import 'services/ring_connection_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,8 @@ class SeekNirvanaApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
     // Initialize standard services
     ref.watch(ringDataServiceProvider);
+    // Initialize connection service for auto-reconnect
+    ref.watch(ringConnectionServiceProvider);
 
     return MaterialApp.router(
       title: 'SeekNirvana',

@@ -76,11 +76,12 @@ class HomeScreen extends ConsumerWidget {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
               sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
-                  childAspectRatio: 1.35,
+                  // Use a more flexible aspect ratio based on screen width
+                  childAspectRatio: MediaQuery.of(context).size.width > 400 ? 1.3 : 1.1,
                 ),
                 delegate: SliverChildListDelegate([
                   HealthCard(

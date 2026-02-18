@@ -97,7 +97,7 @@ class _HeartRateCard extends ConsumerWidget {
     final isMeasuring = ref.watch(heartRateMeasuringProvider);
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(AppConstants.radiusXL),
@@ -114,33 +114,37 @@ class _HeartRateCard extends ConsumerWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
               PulseAnimation(
                 color: AppColors.heartRate,
-                size: 80,
+                size: 64,
                 bpm: bpm,
               ),
-              const SizedBox(width: 20),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'Heart Rate',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
-                        Text(
-                          '$bpm',
-                          style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                            color: AppColors.heartRate,
-                            fontWeight: FontWeight.w700,
+                        Flexible(
+                          child: Text(
+                            '$bpm',
+                            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                              color: AppColors.heartRate,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -148,21 +152,24 @@ class _HeartRateCard extends ConsumerWidget {
                           'BPM',
                           style: TextStyle(
                             color: AppColors.heartRate.withValues(alpha: 0.7),
-                            fontSize: 14,
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
-                     Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                         Text(
-                          _getHRZone(bpm),
-                          style: TextStyle(
-                            color: isDark
-                                ? AppColors.textSecondaryDark
-                                : AppColors.textSecondaryLight,
-                            fontSize: 12,
+                        Flexible(
+                          child: Text(
+                            _getHRZone(bpm),
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppColors.textSecondaryDark
+                                  : AppColors.textSecondaryLight,
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         TextButton.icon(
@@ -257,7 +264,7 @@ class _SpO2Card extends ConsumerWidget {
     final isNormal = value >= 95;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(AppConstants.radiusXL),
@@ -266,20 +273,21 @@ class _SpO2Card extends ConsumerWidget {
         ),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Gauge
           SizedBox(
-            width: 80,
-            height: 80,
+            width: 72,
+            height: 72,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 SizedBox(
-                  width: 75,
-                  height: 75,
+                  width: 68,
+                  height: 68,
                   child: CircularProgressIndicator(
                     value: value / 100,
-                    strokeWidth: 8,
+                    strokeWidth: 7,
                     backgroundColor: isDark
                         ? AppColors.cardBorderDark
                         : AppColors.cardBorderLight,
@@ -292,30 +300,34 @@ class _SpO2Card extends ConsumerWidget {
                 Icon(
                   Icons.water_drop_rounded,
                   color: AppColors.spo2,
-                  size: 28,
+                  size: 24,
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 20),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   'Blood Oxygen (SpO2)',
                   style: Theme.of(context).textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.baseline,
                   textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Text(
-                      '$value',
-                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        color: isNormal ? AppColors.spo2 : AppColors.spo2Low,
-                        fontWeight: FontWeight.w700,
+                    Flexible(
+                      child: Text(
+                        '$value',
+                        style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                          color: isNormal ? AppColors.spo2 : AppColors.spo2Low,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -375,14 +387,15 @@ class _SpO2Card extends ConsumerWidget {
   }
 }
 
-class _TemperatureCard extends StatelessWidget {
+class _TemperatureCard extends ConsumerWidget {
   final double value;
   final bool isDark;
 
   const _TemperatureCard({required this.value, required this.isDark});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isMeasuring = ref.watch(temperatureMeasuringProvider);
     final hasData = value > 0;
     
     return Container(
@@ -402,11 +415,20 @@ class _TemperatureCard extends StatelessWidget {
               color: AppColors.temperature.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(
-              Icons.thermostat_rounded,
-              color: AppColors.temperature,
-              size: 32,
-            ),
+            child: isMeasuring
+                ? SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: AppColors.temperature,
+                    ),
+                  )
+                : const Icon(
+                    Icons.thermostat_rounded,
+                    color: AppColors.temperature,
+                    size: 32,
+                  ),
           ),
           const SizedBox(width: 20),
           Expanded(
@@ -443,19 +465,32 @@ class _TemperatureCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      hasData ? _getTempCategory(value) : 'Not measured',
+                      isMeasuring 
+                          ? 'Measuring...' 
+                          : (hasData ? _getTempCategory(value) : 'Not measured'),
                       style: TextStyle(
-                        color: hasData ? AppColors.success : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                        color: isMeasuring 
+                            ? AppColors.temperature 
+                            : (hasData ? AppColors.success : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     TextButton.icon(
-                      onPressed: () {
-                        RingPlugin.startTemperature();
-                      },
-                      icon: const Icon(Icons.play_circle_outline, size: 20),
-                      label: const Text("Measure"),
+                      onPressed: isMeasuring
+                          ? null
+                          : () {
+                              ref.read(temperatureMeasuringProvider.notifier).state = true;
+                              RingPlugin.startTemperature();
+                            },
+                      icon: isMeasuring
+                          ? const SizedBox(
+                              width: 20, 
+                              height: 20, 
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.temperature)
+                            )
+                          : const Icon(Icons.play_circle_outline, size: 20),
+                      label: Text(isMeasuring ? "Measuring..." : "Measure"),
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.temperature,
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -500,7 +535,7 @@ class _BloodPressureCard extends ConsumerWidget {
     final hasData = systolic > 0 && diastolic > 0;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(AppConstants.radiusXL),
@@ -509,51 +544,58 @@ class _BloodPressureCard extends ConsumerWidget {
         ),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: AppColors.bloodPressure.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: isMeasuring
-                    ? Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          CircularProgressIndicator(
-                            value: progress > 0 ? progress / 100 : null,
-                            strokeWidth: 3,
-                            color: AppColors.bloodPressure,
-                            backgroundColor: AppColors.bloodPressure.withValues(alpha: 0.1),
-                          ),
-                          Text(
-                            '$progress%',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                    ? SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              value: progress > 0 ? progress / 100 : null,
+                              strokeWidth: 3,
                               color: AppColors.bloodPressure,
+                              backgroundColor: AppColors.bloodPressure.withValues(alpha: 0.1),
                             ),
-                          ),
-                        ],
+                            Text(
+                              '$progress%',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.bloodPressure,
+                              ),
+                            ),
+                          ],
+                        ),
                       )
                     : const Icon(
                         Icons.speed_rounded,
                         color: AppColors.bloodPressure,
-                        size: 32,
+                        size: 28,
                       ),
               ),
-              const SizedBox(width: 20),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'Blood Pressure',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
@@ -637,11 +679,11 @@ class _BloodPressureCard extends ConsumerWidget {
               TextButton.icon(
                 onPressed: isMeasuring
                     ? () => RingPlugin.stopBloodPressure()
-                    : () => {
-                          ref.read(bpMeasuringProvider.notifier).state = true,
-                          ref.read(bpProgressValueProvider.notifier).state = 0,
-                          ref.read(ppgWaveformProvider.notifier).state = [],
-                          RingPlugin.startBloodPressure(),
+                    : () {
+                          ref.read(bpMeasuringProvider.notifier).state = true;
+                          ref.read(bpProgressValueProvider.notifier).state = 0;
+                          ref.read(ppgWaveformProvider.notifier).state = [];
+                          RingPlugin.startBloodPressure();
                         },
                 icon: Icon(
                   isMeasuring ? Icons.stop_circle_outlined : Icons.play_circle_outline,

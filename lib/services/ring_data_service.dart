@@ -144,6 +144,7 @@ class RingDataService {
           if (temp != null && temp > 0) {
             // SDK returns temp * 10 (e.g., 365 = 36.5°C)
             ref.read(temperatureProvider.notifier).state = temp / 10.0;
+            ref.read(temperatureMeasuringProvider.notifier).state = false;
             debugPrint('[RingDataService] Temperature: ${temp / 10.0}°C');
           }
           break;
@@ -152,12 +153,14 @@ class RingDataService {
           final temp = data['temperature'] as int?;
           if (temp != null && temp > 0) {
             ref.read(temperatureProvider.notifier).state = temp / 10.0;
+            // Keep measuring state true during testing
             debugPrint('[RingDataService] Temperature (testing): ${temp / 10.0}°C');
           }
           break;
 
         case 'temperatureError':
           debugPrint('[RingDataService] Temperature Error: ${data['code']}');
+          ref.read(temperatureMeasuringProvider.notifier).state = false;
           break;
 
         case 'historyData':
