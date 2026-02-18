@@ -302,6 +302,8 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(null)
             }
             "readHistory" -> {
+                // Notify Flutter that history sync is starting (resets counters)
+                sendHealthData("historyStart", emptyMap<String, Any>())
                 LmAPI.READ_HISTORY(0x01.toByte(), historyListener)
                 result.success(null)
             }
@@ -753,6 +755,7 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             }, 2000)
             mainHandler.postDelayed({
                 Log.d(TAG, "Auto-syncing history after connect")
+                sendHealthData("historyStart", emptyMap<String, Any>())
                 LmAPI.READ_HISTORY(0x00.toByte(), historyListener)
             }, 4000)
         }

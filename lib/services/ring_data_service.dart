@@ -163,6 +163,17 @@ class RingDataService {
           ref.read(temperatureMeasuringProvider.notifier).state = false;
           break;
 
+        case 'historyStart':
+          // Reset all history accumulators before new sync
+          ref.read(historyDataProvider.notifier).state = [];
+          ref.read(lightSleepMinutesProvider.notifier).state = 0;
+          ref.read(deepSleepMinutesProvider.notifier).state = 0;
+          ref.read(remSleepMinutesProvider.notifier).state = 0;
+          ref.read(awakeSleepMinutesProvider.notifier).state = 0;
+          ref.read(sleepDurationProvider.notifier).state = 0.0;
+          debugPrint('[RingDataService] History sync started - reset counters');
+          break;
+
         case 'historyData':
           final current = ref.read(historyDataProvider);
           ref.read(historyDataProvider.notifier).state = [...current, data];

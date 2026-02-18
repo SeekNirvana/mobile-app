@@ -25,11 +25,11 @@ class AppColors {
   static const Color hrv = Color(0xFFAB47BC);
   static const Color calories = Color(0xFFFF7043);
 
-  // Sleep stage colors
-  static const Color sleepDeep = Color(0xFF1A237E);
-  static const Color sleepLight = Color(0xFF5C6BC0);
-  static const Color sleepREM = Color(0xFF7C4DFF);
-  static const Color sleepAwake = Color(0xFFFFAB40);
+  // Sleep stage colors - Vibrant & distinct for visibility on all backgrounds
+  static const Color sleepDeep = Color(0xFF00ACC1);    // Cyan/Teal - visible on dark
+  static const Color sleepLight = Color(0xFF64B5F6);   // Light Blue - soft & clear
+  static const Color sleepREM = Color(0xFFBA68C8);     // Orchid Purple - vibrant
+  static const Color sleepAwake = Color(0xFFFFB74D);   // Light Orange - warm contrast
 
   // Surface colors — Dark theme
   static const Color backgroundDark = Color(0xFF0D0D1A);

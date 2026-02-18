@@ -115,7 +115,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () => RingPlugin.readHistory(),
                   icon: const Icon(Icons.sync_rounded),
-                  label: const Text('Sync Sleep Data'),
+                  label: const Text('Sync Data'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.sleep,
                     side: BorderSide(color: AppColors.sleep.withValues(alpha: 0.5)),
