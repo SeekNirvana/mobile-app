@@ -20,7 +20,10 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
   void initState() {
     super.initState();
     // Initialize REM audio service
-    ref.read(remAudioServiceProvider);
+    // Using addPostFrameCallback to avoid calling read during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(remAudioServiceProvider);
+    });
   }
 
   @override
@@ -678,46 +681,49 @@ class _SoundSelectionCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // Sound selector
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: sounds.map((sound) {
-              final isSelected = sound == selectedSound;
-              return GestureDetector(
-                onTap: () => onSoundChanged(sound),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.sleepREM.withValues(alpha: 0.2)
-                        : (isDark ? Colors.white10 : Colors.grey.shade100),
-                    borderRadius: BorderRadius.circular(20),
-                    border: isSelected
-                        ? Border.all(color: AppColors.sleepREM.withValues(alpha: 0.5))
-                        : null,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isSelected)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: Icon(Icons.check_circle, size: 16, color: AppColors.sleepREM),
-                        ),
-                      Text(
-                        sound,
-                        style: TextStyle(
-                          color: isSelected ? AppColors.sleepREM : null,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
+          // Sound selector dropdown
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white10 : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.sleepREM.withValues(alpha: 0.3),
+              ),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: selectedSound,
+                isExpanded: true,
+                icon: const Icon(Icons.arrow_drop_down, color: AppColors.sleepREM),
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontSize: 15,
                 ),
-              );
-            }).toList(),
+                dropdownColor: isDark ? AppColors.cardDark : Colors.white,
+                onChanged: (String? newValue) {
+                  if (newValue != null) {
+                    onSoundChanged(newValue);
+                  }
+                },
+                items: sounds.map<DropdownMenuItem<String>>((String sound) {
+                  return DropdownMenuItem<String>(
+                    value: sound,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.music_note_rounded,
+                          size: 18,
+                          color: sound == selectedSound ? AppColors.sleepREM : Colors.grey,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(sound),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           // Volume slider

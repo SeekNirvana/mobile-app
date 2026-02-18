@@ -8,9 +8,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/health_provider.dart';
 import '../providers/ring_provider.dart';
 
+// Local audio assets for lucid dreaming sounds
+// Files should be placed in assets/audio/ directory
+const _soundAssets = {
+  'Gentle Chime': 'audio/chime-sound.mp3',
+  'Tibetan Bowl': 'audio/tibetan-bowl-sound.mp3',
+  'Singing Bowl': 'audio/tibetan-singing-bowl.mp3',
+  'Dream Modular': 'audio/dreaming-modular-sound.mp3',
+};
+
 /// Service that manages REM audio cues for lucid dreaming.
 /// Monitors sleep stages and plays gentle audio when REM is detected.
-class RemAudioService {
+class RemAudioService extends ChangeNotifier {
   final Ref ref;
   AudioPlayer? _audioPlayer;
   StreamSubscription? _healthSub;
@@ -41,6 +50,26 @@ class RemAudioService {
     _audioPlayer = AudioPlayer();
     await _audioPlayer!.setVolume(_volume);
     
+    // Set release mode to stop when finished
+    await _audioPlayer!.setReleaseMode(ReleaseMode.stop);
+    
+    // Listen for audio completion
+    _audioPlayer!.onPlayerComplete.listen((_) {
+      debugPrint('[RemAudioService] Audio playback completed');
+      _isPlaying = false;
+      notifyListeners();
+    });
+    
+    // Listen for audio errors
+    _audioPlayer!.onPlayerStateChanged.listen((state) {
+      debugPrint('[RemAudioService] Player state: $state');
+    });
+    
+    // Listen for playback errors
+    _audioPlayer!.onLog.listen((String message) {
+      debugPrint('[RemAudioService] Audio log: $message');
+    });
+    
     // Listen to health data for REM detection
     _healthSub = ref.read(historyDataProvider.notifier).stream.listen((data) {
       if (_isEnabled) {
@@ -60,7 +89,13 @@ class RemAudioService {
     final prefs = await SharedPreferences.getInstance();
     _isEnabled = prefs.getBool('rem_audio_enabled') ?? false;
     _volume = prefs.getDouble('rem_audio_volume') ?? 0.5;
-    _selectedSound = prefs.getString('rem_audio_sound') ?? 'Gentle Chime';
+    final savedSound = prefs.getString('rem_audio_sound');
+    // Validate that saved sound exists in available sounds, default to Gentle Chime
+    if (savedSound != null && _soundAssets.containsKey(savedSound)) {
+      _selectedSound = savedSound;
+    } else {
+      _selectedSound = 'Gentle Chime';
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -100,48 +135,70 @@ class RemAudioService {
     if (_isPlaying) return;
     
     _isPlaying = true;
+    notifyListeners();
     
     try {
-      // Generate a simple tone using system sound
-      // For now, use a beep or system sound
+      debugPrint('[RemAudioService] Playing REM audio: $_selectedSound');
       await _generateTone();
       
-      debugPrint('[RemAudioService] Playing REM audio: $_selectedSound');
+      // Auto-reset playing state after 3 seconds max (for short cues)
+      // The onPlayerComplete listener will reset it earlier if audio finishes first
+      Future.delayed(const Duration(seconds: 3), () {
+        if (_isPlaying) {
+          _isPlaying = false;
+          notifyListeners();
+        }
+      });
     } catch (e) {
       debugPrint('[RemAudioService] Error playing audio: $e');
-    } finally {
-      // Reset playing state after a delay
-      await Future.delayed(const Duration(seconds: 2));
       _isPlaying = false;
+      notifyListeners();
     }
   }
 
   Future<void> _generateTone() async {
-    // Use platform channel to play system sounds
-    // Different sounds have different frequencies
-    final frequencies = switch (_selectedSound) {
-      'Gentle Chime' => [523.25, 659.25], // C5, E5
-      'Tibetan Bowl' => [180.0, 200.0], // Low frequencies
-      'Soft Whisper' => [800.0, 1000.0], // Higher frequencies
-      'Binaural Beat' => [200.0, 210.0], // Slight difference
-      'Custom Audio' => [440.0, 528.0], // A4, C5
-      _ => [523.25, 659.25],
-    };
-    
-    // Try to use the ring's built-in audio if available
-    // Otherwise, play a simple beep through the phone
     try {
-      // For now, use a simple beep pattern
-      // In a real implementation, you would generate actual audio tones
-      await SystemSound.play(SystemSoundType.click);
+      // Get the asset path for the selected sound
+      final assetPath = _soundAssets[_selectedSound] ?? _soundAssets['Gentle Chime']!;
       
-      // Double beep for some sounds
-      if (_selectedSound == 'Gentle Chime' || _selectedSound == 'Tibetan Bowl') {
-        await Future.delayed(const Duration(milliseconds: 200));
-        await SystemSound.play(SystemSoundType.click);
+      debugPrint('[RemAudioService] Playing sound: $_selectedSound from assets/$assetPath');
+      
+      // Use AudioPlayer to play the sound from assets
+      if (_audioPlayer != null) {
+        // Stop any currently playing audio
+        await _audioPlayer!.stop();
+        
+        debugPrint('[RemAudioService] Creating AssetSource for: $assetPath');
+        final source = AssetSource(assetPath);
+        
+        // Play from asset
+        debugPrint('[RemAudioService] Calling play()...');
+        await _audioPlayer!.play(source);
+        
+        debugPrint('[RemAudioService] Audio playback started successfully');
+      } else {
+        // Fallback to system sound if audio player not initialized
+        debugPrint('[RemAudioService] AudioPlayer is null, using fallback');
+        await _fallbackBeep();
       }
+    } catch (e, stackTrace) {
+      debugPrint('[RemAudioService] Error playing audio: $e');
+      debugPrint('[RemAudioService] Stack trace: $stackTrace');
+      // Fallback to system sound
+      await _fallbackBeep();
+    }
+  }
+  
+  Future<void> _fallbackBeep() async {
+    try {
+      // Use a pattern of system clicks to simulate a gentle chime
+      await SystemSound.play(SystemSoundType.click);
+      await Future.delayed(const Duration(milliseconds: 150));
+      await SystemSound.play(SystemSoundType.click);
+      await Future.delayed(const Duration(milliseconds: 150));
+      await SystemSound.play(SystemSoundType.click);
     } catch (e) {
-      debugPrint('[RemAudioService] Could not play system sound: $e');
+      debugPrint('[RemAudioService] Fallback beep also failed: $e');
     }
   }
 
@@ -151,6 +208,7 @@ class RemAudioService {
   Future<void> setEnabled(bool enabled) async {
     _isEnabled = enabled;
     await _saveSettings();
+    notifyListeners();
     debugPrint('[RemAudioService] REM audio ${enabled ? 'enabled' : 'disabled'}');
   }
 
@@ -159,17 +217,20 @@ class RemAudioService {
     _volume = volume.clamp(0.0, 1.0);
     await _audioPlayer?.setVolume(_volume);
     await _saveSettings();
+    notifyListeners();
   }
 
   /// Select sound type
   Future<void> setSound(String sound) async {
     _selectedSound = sound;
     await _saveSettings();
+    notifyListeners();
   }
 
   /// Test play the selected sound
   Future<void> testPlay() async {
     debugPrint('[RemAudioService] Testing audio: $_selectedSound');
+    // Don't set _isPlaying here, let _playRemAudio handle it
     await _playRemAudio();
   }
 
@@ -177,13 +238,7 @@ class RemAudioService {
   bool get isEnabled => _isEnabled;
   double get volume => _volume;
   String get selectedSound => _selectedSound;
-  List<String> get availableSounds => [
-    'Gentle Chime',
-    'Tibetan Bowl',
-    'Soft Whisper',
-    'Binaural Beat',
-    'Custom Audio',
-  ];
+  List<String> get availableSounds => _soundAssets.keys.toList();
   bool get isPlaying => _isPlaying;
 
   void dispose() {
@@ -193,8 +248,8 @@ class RemAudioService {
   }
 }
 
-/// Provider for the REM audio service
-final remAudioServiceProvider = Provider<RemAudioService>((ref) {
+/// Provider for the REM audio service (ChangeNotifier)
+final remAudioServiceProvider = ChangeNotifierProvider<RemAudioService>((ref) {
   return RemAudioService(ref);
 });
 
