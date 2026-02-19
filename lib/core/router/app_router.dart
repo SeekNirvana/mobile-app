@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:seeknirvana/features/home/home_screen.dart';
 import 'package:seeknirvana/features/vitals/vitals_screen.dart';
 import 'package:seeknirvana/features/sleep/sleep_screen.dart';
+import 'package:seeknirvana/features/activities/activities_screen.dart';
 import 'package:seeknirvana/features/profile/profile_screen.dart';
 import 'package:seeknirvana/features/scan/scan_screen.dart';
 import 'package:seeknirvana/shared/widgets/app_scaffold.dart';
@@ -34,6 +35,12 @@ final router = GoRouter(
           path: '/sleep',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: SleepScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/activities',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: ActivitiesScreen(),
           ),
         ),
         GoRoute(

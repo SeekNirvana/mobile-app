@@ -59,6 +59,8 @@ final deepSleepMinutesProvider = StateProvider<int>((ref) => 0);
 final lightSleepMinutesProvider = StateProvider<int>((ref) => 0);
 final remSleepMinutesProvider = StateProvider<int>((ref) => 0);
 final awakeSleepMinutesProvider = StateProvider<int>((ref) => 0);
+final sleepStartTimeProvider = StateProvider<DateTime?>((ref) => null);
+final sleepEndTimeProvider = StateProvider<DateTime?>((ref) => null);
 
 // Health score (composite, adapts as real data comes in)
 final healthScoreProvider = Provider<int>((ref) {

@@ -10,7 +10,7 @@ class AppScaffold extends StatelessWidget {
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     if (location.startsWith('/vitals')) return 1;
-    if (location.startsWith('/sleep')) return 2;
+    if (location.startsWith('/activities')) return 2;
     if (location.startsWith('/profile')) return 3;
     return 0;
   }
@@ -51,10 +51,10 @@ class AppScaffold extends StatelessWidget {
                   onTap: () => context.go('/vitals'),
                 ),
                 _NavItem(
-                  icon: Icons.bedtime_rounded,
-                  label: 'Sleep',
+                  icon: Icons.self_improvement_rounded,
+                  label: 'Activities',
                   isSelected: index == 2,
-                  onTap: () => context.go('/sleep'),
+                  onTap: () => context.go('/activities'),
                 ),
                 _NavItem(
                   icon: Icons.person_rounded,

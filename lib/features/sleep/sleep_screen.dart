@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/health_provider.dart';
@@ -35,6 +37,8 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
     final remSleep = ref.watch(remSleepMinutesProvider);
     final awakeSleep = ref.watch(awakeSleepMinutesProvider);
     final sleepDuration = ref.watch(sleepDurationProvider);
+    final sleepStart = ref.watch(sleepStartTimeProvider);
+    final sleepEnd = ref.watch(sleepEndTimeProvider);
     final historyData = ref.watch(historyDataProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -53,7 +57,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () => context.go('/vitals'),
                     ),
                     Text(
                       'Sleep & Dreams',
@@ -76,6 +80,8 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
                   lightMinutes: lightSleep,
                   remMinutes: remSleep,
                   awakeMinutes: awakeSleep,
+                  sleepStart: sleepStart,
+                  sleepEnd: sleepEnd,
                   isDark: isDark,
                 ),
               ),
@@ -103,6 +109,8 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: _SleepTimelineCard(
                     historyData: historyData,
+                    sleepStart: sleepStart,
+                    sleepEnd: sleepEnd,
                     isDark: isDark,
                   ),
                 ),
@@ -192,6 +200,8 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
 class _SleepOverviewCard extends StatelessWidget {
   final double duration;
   final int deepMinutes, lightMinutes, remMinutes, awakeMinutes;
+  final DateTime? sleepStart;
+  final DateTime? sleepEnd;
   final bool isDark;
 
   const _SleepOverviewCard({
@@ -200,6 +210,8 @@ class _SleepOverviewCard extends StatelessWidget {
     required this.lightMinutes,
     required this.remMinutes,
     required this.awakeMinutes,
+    this.sleepStart,
+    this.sleepEnd,
     required this.isDark,
   });
 
@@ -267,6 +279,40 @@ class _SleepOverviewCard extends StatelessWidget {
           ),
           if (hasData) ...[
             const SizedBox(height: 20),
+            // Bedtime and Wake up times
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _TimeInfo(
+                      label: 'Bedtime',
+                      time: sleepStart,
+                      icon: Icons.bedtime_outlined,
+                      iconColor: AppColors.sleepDeep,
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: isDark ? Colors.white24 : Colors.black12,
+                  ),
+                  Expanded(
+                    child: _TimeInfo(
+                      label: 'Wake up',
+                      time: sleepEnd,
+                      icon: Icons.wb_sunny_outlined,
+                      iconColor: AppColors.sleepREM,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             // Sleep stage breakdown
             Row(
               children: [
@@ -332,6 +378,57 @@ class _SleepStageChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TimeInfo extends StatelessWidget {
+  final String label;
+  final DateTime? time;
+  final IconData icon;
+  final Color iconColor;
+
+  const _TimeInfo({
+    required this.label,
+    required this.time,
+    required this.icon,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final timeFormat = DateFormat('h:mm a');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: iconColor.withValues(alpha: 0.8),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          time != null ? timeFormat.format(time!) : '--:--',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 22,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -459,10 +556,14 @@ class _LegendItem extends StatelessWidget {
 
 class _SleepTimelineCard extends StatelessWidget {
   final List<Map<String, dynamic>> historyData;
+  final DateTime? sleepStart;
+  final DateTime? sleepEnd;
   final bool isDark;
 
   const _SleepTimelineCard({
     required this.historyData,
+    this.sleepStart,
+    this.sleepEnd,
     required this.isDark,
   });
 
@@ -478,6 +579,9 @@ class _SleepTimelineCard extends StatelessWidget {
 
     if (sleepRecords.isEmpty) return const SizedBox.shrink();
 
+    final timeFormat = DateFormat('h:mm a');
+    final dateFormat = DateFormat('EEE, MMM d');
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -488,41 +592,283 @@ class _SleepTimelineCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Sleep Timeline',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Sleep Timeline',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (sleepStart != null)
+                Text(
+                  dateFormat.format(sleepStart!),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Time markers at top
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                sleepStart != null ? timeFormat.format(sleepStart!) : 'Bedtime',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.sleepDeep,
+                ),
+              ),
+              Text(
+                sleepEnd != null ? timeFormat.format(sleepEnd!) : 'Wake up',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.sleepREM,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Sleep stages visualization with touch support
+          _SleepTimelineChart(
+            sleepRecords: sleepRecords,
+            sleepStart: sleepStart,
+            sleepEnd: sleepEnd,
+            isDark: isDark,
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 60,
+          // Sleep stage legend with counts
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _TimelineLegendItem('Deep', AppColors.sleepDeep, 
+                sleepRecords.where((r) => r['sleepType'] == 2).length * 5),
+              _TimelineLegendItem('Light', AppColors.sleepLight, 
+                sleepRecords.where((r) => r['sleepType'] == 1).length * 5),
+              _TimelineLegendItem('REM', AppColors.sleepREM, 
+                sleepRecords.where((r) => r['sleepType'] == 4).length * 5),
+              _TimelineLegendItem('Awake', AppColors.sleepAwake, 
+                sleepRecords.where((r) => r['sleepType'] == 3).length * 5),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineLegendItem extends StatelessWidget {
+  final String label;
+  final Color color;
+  final int minutes;
+
+  const _TimelineLegendItem(this.label, this.color, this.minutes);
+
+  @override
+  Widget build(BuildContext context) {
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+    String timeStr;
+    if (hours > 0) {
+      timeStr = '${hours}h ${mins}m';
+    } else {
+      timeStr = '${mins}m';
+    }
+    
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: color.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          timeStr,
+          style: TextStyle(
+            fontSize: 10,
+            color: color.withValues(alpha: 0.7),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Interactive Sleep Timeline Chart ────────────
+
+class _SleepTimelineChart extends StatefulWidget {
+  final List<Map<String, dynamic>> sleepRecords;
+  final DateTime? sleepStart;
+  final DateTime? sleepEnd;
+  final bool isDark;
+
+  const _SleepTimelineChart({
+    required this.sleepRecords,
+    required this.sleepStart,
+    required this.sleepEnd,
+    required this.isDark,
+  });
+
+  @override
+  State<_SleepTimelineChart> createState() => _SleepTimelineChartState();
+}
+
+class _SleepTimelineChartState extends State<_SleepTimelineChart> {
+  int? hoveredIndex;
+
+  String _getStageLabel(int sleepType) {
+    switch (sleepType) {
+      case 1: return 'Light Sleep';
+      case 2: return 'Deep Sleep';
+      case 3: return 'Awake';
+      case 4: return 'REM Sleep';
+      default: return 'Unknown';
+    }
+  }
+
+  Color _getStageColor(int sleepType) {
+    switch (sleepType) {
+      case 1: return AppColors.sleepLight;
+      case 2: return AppColors.sleepDeep;
+      case 3: return AppColors.sleepAwake;
+      case 4: return AppColors.sleepREM;
+      default: return Colors.grey;
+    }
+  }
+
+  double _getHeightFactor(int sleepType) {
+    switch (sleepType) {
+      case 2: return 1.0;  // Deep - tallest
+      case 4: return 0.75; // REM
+      case 1: return 0.5;  // Light
+      case 3: return 0.25; // Awake - shortest
+      default: return 0.5;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final timeFormat = DateFormat('h:mm a');
+    
+    return Column(
+      children: [
+        // Time tooltip when hovering
+        if (hoveredIndex != null && widget.sleepStart != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: widget.isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Builder(builder: (context) {
+              final record = widget.sleepRecords[hoveredIndex!];
+              final timestamp = record['timestamp'] as int?;
+              final sleepType = record['sleepType'] as int;
+              final recordTime = timestamp != null 
+                  ? DateTime.fromMillisecondsSinceEpoch(timestamp * 1000)
+                  : null;
+              
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _getStageColor(sleepType),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_getStageLabel(sleepType)} · ${recordTime != null ? timeFormat.format(recordTime) : '--:--'}',
+                    style: TextStyle(
+                      color: widget.isDark ? Colors.white : Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ),
+        
+        // Timeline chart
+        Container(
+          height: 80,
+          decoration: BoxDecoration(
+            color: widget.isDark ? Colors.black12 : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: widget.isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(11),
             child: Row(
-              children: sleepRecords.map((r) {
+              children: widget.sleepRecords.asMap().entries.map((entry) {
+                final index = entry.key;
+                final r = entry.value;
                 final sleepType = r['sleepType'] as int;
-                Color color;
-                switch (sleepType) {
-                  case 1: color = AppColors.sleepLight; break;
-                  case 2: color = AppColors.sleepDeep; break;
-                  case 3: color = AppColors.sleepAwake; break;
-                  case 4: color = AppColors.sleepREM; break;
-                  default: color = Colors.grey;
-                }
-                // Each record is ~5 min, height shows depth
-                final heightFactor = sleepType == 2 ? 1.0
-                    : sleepType == 4 ? 0.75
-                    : sleepType == 1 ? 0.5
-                    : 0.2;
+                final color = _getStageColor(sleepType);
+                final heightFactor = _getHeightFactor(sleepType);
+                final isHovered = hoveredIndex == index;
+                
                 return Expanded(
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: FractionallySizedBox(
-                      heightFactor: heightFactor,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 0.5),
-                        decoration: BoxDecoration(
-                          color: color,
-                          borderRadius: BorderRadius.circular(2),
+                  child: GestureDetector(
+                    onTapDown: (_) => setState(() => hoveredIndex = index),
+                    onTapUp: (_) => setState(() => hoveredIndex = null),
+                    onTapCancel: () => setState(() => hoveredIndex = null),
+                    child: MouseRegion(
+                      onEnter: (_) => setState(() => hoveredIndex = index),
+                      onExit: (_) => setState(() => hoveredIndex = null),
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: FractionallySizedBox(
+                          heightFactor: heightFactor,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            margin: EdgeInsets.symmetric(
+                              horizontal: isHovered ? 0.5 : 0.3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isHovered ? color.withValues(alpha: 0.8) : color,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(2),
+                              ),
+                              boxShadow: isHovered ? [
+                                BoxShadow(
+                                  color: color.withValues(alpha: 0.5),
+                                  blurRadius: 4,
+                                  spreadRadius: 1,
+                                )
+                              ] : null,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -531,16 +877,8 @@ class _SleepTimelineCard extends StatelessWidget {
               }).toList(),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Bedtime', style: Theme.of(context).textTheme.bodySmall),
-              Text('Wake up', style: Theme.of(context).textTheme.bodySmall),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
