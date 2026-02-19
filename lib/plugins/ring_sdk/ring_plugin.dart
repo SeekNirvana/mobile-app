@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'models/scanned_device.dart';
 import 'models/ring_connection_state.dart';
 
-/// Flutter plugin bridge to the native NirvanaRing SDK.
+/// Flutter plugin bridge to the native ChipletRing SDK.
 ///
 /// Uses MethodChannel for commands and EventChannel for streams.
-/// Android: wraps NirvanaRing .aar (com.lm.sdk.*)
+/// Android: wraps ChipletRing .aar (com.lm.sdk.*)
 /// iOS: wraps BCLRingSDK.xcframework
 class RingPlugin {
   static const MethodChannel _channel = MethodChannel('com.seeknirvana.app/ring');
@@ -19,6 +19,22 @@ class RingPlugin {
   static Stream<List<ScannedDevice>>? _scanStream;
   static Stream<RingConnectionState>? _connectionStream;
   static Stream<Map<String, dynamic>>? _healthStream;
+
+  // ── Bluetooth State ──
+
+  static Future<bool> isBluetoothEnabled() async {
+    final result = await _channel.invokeMethod<bool>('isBluetoothEnabled');
+    return result ?? false;
+  }
+
+  static Future<void> requestEnableBluetooth() async {
+    await _channel.invokeMethod('requestEnableBluetooth');
+  }
+
+  static Future<String> requestBluetoothPermission() async {
+    final result = await _channel.invokeMethod<String>('requestBluetoothPermission');
+    return result ?? 'unknown';
+  }
 
   // ── Scanning ──
 
@@ -40,8 +56,11 @@ class RingPlugin {
 
   // ── Connection ──
 
-  static Future<void> connect(String macAddress) async {
-    await _channel.invokeMethod('connect', {'mac': macAddress});
+  static Future<void> connect(String macAddress, {bool autoReconnect = false}) async {
+    await _channel.invokeMethod('connect', {
+      'mac': macAddress,
+      'autoReconnect': autoReconnect,
+    });
   }
 
   static Future<void> disconnect() async {
@@ -63,10 +82,24 @@ class RingPlugin {
     return _connectionStream!;
   }
 
+  // ── RSSI ──
+
+  static Future<void> startReadRSSI() async {
+    await _channel.invokeMethod('startReadRSSI');
+  }
+
+  static Future<void> stopReadRSSI() async {
+    await _channel.invokeMethod('stopReadRSSI');
+  }
+
   // ── Device Info ──
 
   static Future<void> getBattery() async {
     await _channel.invokeMethod('getBattery');
+  }
+
+  static Future<void> getChargingState() async {
+    await _channel.invokeMethod('getChargingState');
   }
 
   static Future<void> getVersion() async {
@@ -79,6 +112,10 @@ class RingPlugin {
 
   static Future<void> getSteps() async {
     await _channel.invokeMethod('getSteps');
+  }
+
+  static Future<void> clearSteps() async {
+    await _channel.invokeMethod('clearSteps');
   }
 
   // ── Health Measurements ──
@@ -124,5 +161,136 @@ class RingPlugin {
 
   static Future<void> readHistory() async {
     await _channel.invokeMethod('readHistory');
+  }
+
+  static Future<void> deleteHistory() async {
+    await _channel.invokeMethod('deleteHistory');
+  }
+
+  // ── Settings ──
+
+  static Future<void> setBluetoothName(String name) async {
+    await _channel.invokeMethod('setBluetoothName', {'name': name});
+  }
+
+  static Future<String?> getBluetoothName() async {
+    final result = await _channel.invokeMethod<Map>('getBluetoothName');
+    return result?['name'] as String?;
+  }
+
+  static Future<void> setPersonalInformation({
+    int sex = 0,
+    int age = 30,
+    int height = 170,
+    int weight = 70,
+  }) async {
+    await _channel.invokeMethod('setPersonalInformation', {
+      'sex': sex,
+      'age': age,
+      'height': height,
+      'weight': weight,
+    });
+  }
+
+  static Future<Map<String, dynamic>?> getPersonalInformation() async {
+    final result = await _channel.invokeMethod<Map>('getPersonalInformation');
+    return result != null ? Map<String, dynamic>.from(result) : null;
+  }
+
+  static Future<void> restoreFactorySettings() async {
+    await _channel.invokeMethod('restoreFactorySettings');
+  }
+
+  static Future<void> setCollectionPeriod(int period) async {
+    await _channel.invokeMethod('setCollectionPeriod', {'period': period});
+  }
+
+  static Future<int?> getCollectionPeriod() async {
+    final result = await _channel.invokeMethod<Map>('getCollectionPeriod');
+    return result?['period'] as int?;
+  }
+
+  // ── PPG Settings ──
+
+  static Future<void> setPPGFrequency({
+    int hrFrequency = 0x30,
+    int spo2Frequency = 0x30,
+    int rawdataFrequency = 0x30,
+  }) async {
+    await _channel.invokeMethod('setPPGFrequency', {
+      'hrFrequency': hrFrequency,
+      'spo2Frequency': spo2Frequency,
+      'rawdataFrequency': rawdataFrequency,
+    });
+  }
+
+  static Future<void> setPPGStatus(int status) async {
+    await _channel.invokeMethod('setPPGStatus', {'status': status});
+  }
+
+  static Future<int?> getPPGStatus() async {
+    final result = await _channel.invokeMethod<Map>('getPPGStatus');
+    return result?['status'] as int?;
+  }
+
+  // ── Sensor Settings ──
+
+  static Future<void> setGyroscopeStatus(int status) async {
+    await _channel.invokeMethod('setGyroscopeStatus', {'status': status});
+  }
+
+  static Future<int?> getGyroscopeStatus() async {
+    final result = await _channel.invokeMethod<Map>('getGyroscopeStatus');
+    return result?['status'] as int?;
+  }
+
+  static Future<void> setAccelerometerStatus(int status) async {
+    await _channel.invokeMethod('setAccelerometerStatus', {'status': status});
+  }
+
+  static Future<int?> getAccelerometerStatus() async {
+    final result = await _channel.invokeMethod<Map>('getAccelerometerStatus');
+    return result?['status'] as int?;
+  }
+
+  static Future<void> setTemperatureStatus(int status) async {
+    await _channel.invokeMethod('setTemperatureStatus', {'status': status});
+  }
+
+  static Future<int?> getTemperatureStatus() async {
+    final result = await _channel.invokeMethod<Map>('getTemperatureStatus');
+    return result?['status'] as int?;
+  }
+
+  static Future<void> setAutoCollectionStatus(int status) async {
+    await _channel.invokeMethod('setAutoCollectionStatus', {'status': status});
+  }
+
+  static Future<int?> getAutoCollectionStatus() async {
+    final result = await _channel.invokeMethod<Map>('getAutoCollectionStatus');
+    return result?['status'] as int?;
+  }
+
+  // ── Advanced Features ──
+
+  static Future<Map<String, dynamic>?> selfInspection() async {
+    final result = await _channel.invokeMethod<Map>('selfInspection');
+    return result != null ? Map<String, dynamic>.from(result) : null;
+  }
+
+  static Future<void> setHIDMode({
+    int touchMode = 0,
+    int gestureMode = 0,
+    int systemType = 0,
+  }) async {
+    await _channel.invokeMethod('setHIDMode', {
+      'touchMode': touchMode,
+      'gestureMode': gestureMode,
+      'systemType': systemType,
+    });
+  }
+
+  static Future<void> vibrate({int seconds = 1}) async {
+    await _channel.invokeMethod('vibrate', {'seconds': seconds});
   }
 }

@@ -1,9 +1,12 @@
-package com.seeknirvana.seeknirvana
+package com.seeknirvana.app
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -36,6 +39,7 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         private const val SCAN_CHANNEL = "com.seeknirvana.app/ring/scan"
         private const val CONNECTION_CHANNEL = "com.seeknirvana.app/ring/connection"
         private const val HEALTH_CHANNEL = "com.seeknirvana.app/ring/health"
+        private const val REQUEST_ENABLE_BT = 1001
     }
 
     private lateinit var methodChannel: MethodChannel
@@ -53,6 +57,7 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     private val scannedDevices = mutableListOf<Map<String, Any?>>()
     private var connectedMac: String? = null
+    private var isAutoReconnect = false
 
     // Queued events that arrived before the Flutter stream was ready
     private val pendingHealthEvents = mutableListOf<Map<String, Any?>>()
@@ -107,7 +112,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             LmAPI.init(binding.activity.application)
             LmAPI.addWLSCmdListener(binding.activity, this)
             // Register heart listener globally to prevent NPE during temperature measurement
-            // The SDK internally expects this listener to be available
             LmAPI.GET_HEART_ROTA(0x00.toByte(), 0x30.toByte(), heartListener)
             Log.i(TAG, "SDK initialized and listener registered")
         } catch (e: Exception) {
@@ -131,6 +135,25 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         val activity = activityBinding?.activity
         when (call.method) {
+            // MARK: - Bluetooth State
+            "isBluetoothEnabled" -> {
+                val adapter = BluetoothAdapter.getDefaultAdapter()
+                result.success(adapter != null && adapter.isEnabled)
+            }
+            "requestEnableBluetooth" -> {
+                val adapter = BluetoothAdapter.getDefaultAdapter()
+                if (adapter != null && !adapter.isEnabled) {
+                    val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                    activity?.startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+                }
+                result.success(null)
+            }
+            "requestBluetoothPermission" -> {
+                // Android permissions are handled by permission_handler package
+                result.success("granted")
+            }
+            
+            // MARK: - Scanning
             "startScan" -> {
                 scannedDevices.clear()
                 if (activity != null) {
@@ -161,12 +184,15 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 if (activity != null) { BLEUtils.stopLeScan(activity, leScanCallback) }
                 result.success(null)
             }
+            
+            // MARK: - Connection
             "connect" -> {
                 val mac = call.argument<String>("mac") ?: run {
                     result.error("INVALID_MAC", "MAC address is required", null)
                     return
                 }
-                Log.i(TAG, "Connect requested, mac='$mac', length=${mac.length}")
+                isAutoReconnect = call.argument<Boolean>("autoReconnect") ?: false
+                Log.i(TAG, "Connect requested, mac='$mac', autoReconnect=$isAutoReconnect")
                 connectedMac = mac
                 val adapter = BluetoothAdapter.getDefaultAdapter()
                 if (adapter != null && activity != null) {
@@ -198,9 +224,23 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 }
                 result.success(null)
             }
+            "startReadRSSI" -> {
+                // RSSI is already reported during scan, but we could add periodic reading
+                result.success(null)
+            }
+            "stopReadRSSI" -> {
+                result.success(null)
+            }
+            
+            // MARK: - Device Info
             "getBattery" -> {
                 Log.d(TAG, "MethodChannel: getBattery called")
                 LmAPI.GET_BATTERY(0x00.toByte())
+                result.success(null)
+            }
+            "getChargingState" -> {
+                Log.d(TAG, "MethodChannel: getChargingState called")
+                LmAPI.GET_BATTERY(0x01.toByte())
                 result.success(null)
             }
             "getVersion" -> {
@@ -219,6 +259,12 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 LmAPI.STEP_COUNTING()
                 result.success(null)
             }
+            "clearSteps" -> {
+                Log.w(TAG, "MethodChannel: clearSteps not available in Android SDK v1.0.44")
+                result.error("NOT_IMPLEMENTED", "clearSteps is not available on Android", null)
+            }
+            
+            // MARK: - Heart Rate
             "startHeartRate" -> {
                 Log.d(TAG, "MethodChannel: startHeartRate called")
                 LmAPI.GET_HEART_ROTA(0x01.toByte(), 0x30.toByte(), heartListener)
@@ -229,6 +275,8 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 LmAPI.GET_HEART_ROTA(0x00.toByte(), 0x30.toByte(), heartListener)
                 result.success(null)
             }
+            
+            // MARK: - SpO2
             "startSpO2" -> {
                 Log.d(TAG, "MethodChannel: startSpO2 called")
                 LmAPI.GET_HEART_Q2(0x01.toByte(), spo2Listener)
@@ -239,25 +287,24 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 LmAPI.GET_HEART_Q2(0x00.toByte(), spo2Listener)
                 result.success(null)
             }
+            
+            // MARK: - Blood Pressure
             "startBloodPressure" -> {
                 Log.d(TAG, "MethodChannel: startBloodPressure called")
-                // Clear previous data before starting new measurement
                 bpPpgValues.clear()
                 bpHrValues.clear()
                 bpMeasurementStartTime = System.currentTimeMillis()
                 isBpMeasurementActive = true
                 
-                // Cancel any existing measurement job
                 bpMeasurementJob?.let { mainHandler.removeCallbacks(it) }
                 
-                // Start heart rate listener - we'll estimate BP from HR data
-                // since the ring's IBloodPressureListener doesn't fire consistently
+                // Native BP measurement not available in SDK v1.0.44, using HR estimation
+                
+                // Also start HR for backup estimation
                 LmAPI.GET_HEART_ROTA(0x01.toByte(), 0x30.toByte(), heartListener)
                 
-                // Send initial progress to indicate measurement started
                 sendHealthData("bpProgress", mapOf("progress" to 0))
                 
-                // Set up periodic progress updates
                 var progressUpdateCount = 0
                 val progressRunnable = object : Runnable {
                     override fun run() {
@@ -266,13 +313,12 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         val progress = (progressUpdateCount * 10).coerceAtMost(90)
                         sendHealthData("bpProgress", mapOf("progress" to progress))
                         if (progress < 90) {
-                            mainHandler.postDelayed(this, 2000) // Update every 2 seconds
+                            mainHandler.postDelayed(this, 2000)
                         }
                     }
                 }
                 mainHandler.post(progressRunnable)
                 
-                // Set a timeout for BP measurement (25 seconds)
                 bpMeasurementJob = Runnable {
                     if (isBpMeasurementActive) {
                         Log.d(TAG, "BP measurement timeout - estimating from HR data")
@@ -286,27 +332,47 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             }
             "stopBloodPressure" -> {
                 Log.d(TAG, "MethodChannel: stopBloodPressure called")
-                // Estimate BP from collected HR data before stopping
                 estimateBPFromHeartRateData()
                 stopBloodPressureMeasurement()
                 result.success(null)
             }
+            
+            // MARK: - Temperature
             "startTemperature" -> {
                 Log.d(TAG, "MethodChannel: startTemperature called")
-                // Ensure heart listener is registered before temperature measurement
-                // to prevent SDK NPE - the SDK internally calls heart handler
                 LmAPI.GET_HEART_ROTA(0x00.toByte(), 0x30.toByte(), heartListener)
                 mainHandler.postDelayed({
                     LmAPI.READ_TEMP(tempListener)
                 }, 100)
                 result.success(null)
             }
+            
+            // MARK: - History
             "readHistory" -> {
-                // Notify Flutter that history sync is starting (resets counters)
                 sendHealthData("historyStart", emptyMap<String, Any>())
                 LmAPI.READ_HISTORY(0x01.toByte(), historyListener)
                 result.success(null)
             }
+            "deleteHistory" -> {
+                Log.w(TAG, "MethodChannel: deleteHistory not available in Android SDK v1.0.44")
+                result.error("NOT_IMPLEMENTED", "deleteHistory is not available on Android", null)
+            }
+            
+            // MARK: - Settings (Not available in Android SDK v1.0.44)
+            "setBluetoothName", "getBluetoothName",
+            "setPersonalInformation", "getPersonalInformation",
+            "restoreFactorySettings",
+            "setCollectionPeriod", "getCollectionPeriod",
+            "setPPGFrequency", "setPPGStatus", "getPPGStatus",
+            "setGyroscopeStatus", "getGyroscopeStatus",
+            "setAccelerometerStatus", "getAccelerometerStatus",
+            "setTemperatureStatus", "getTemperatureStatus",
+            "setAutoCollectionStatus", "getAutoCollectionStatus",
+            "selfInspection", "setHIDMode", "vibrate" -> {
+                Log.w(TAG, "Method ${call.method} not available in Android SDK v1.0.44")
+                result.error("NOT_IMPLEMENTED", "${call.method} is not available on Android", null)
+            }
+            
             else -> result.notImplemented()
         }
     }
@@ -345,7 +411,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     // ─── Heart Rate Listener ──────────────────────────────────
 
-    // BP measurement state (used when BP is estimated from HR data)
     private var isBpMeasurementActive = false
     private val bpHrValues = mutableListOf<Int>()
     private var bpMeasurementJob: Runnable? = null
@@ -354,32 +419,25 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         override fun progress(progress: Int) {
             sendHealthData("heartRateProgress", mapOf("progress" to progress))
             
-            // If BP measurement is active, forward HR progress as BP progress
             if (isBpMeasurementActive) {
-                // Scale HR progress (0-100) to BP progress
                 sendHealthData("bpProgress", mapOf("progress" to progress))
             }
         }
         override fun resultData(heart: Int, heartRota: Int, yaLi: Int, temp: Int) {
             Log.d(TAG, "Heart Rate Data: HR=$heart, HRV=$heartRota, stress=$yaLi, temp=$temp")
             
-            // Collect HR data for BP measurement if active
             if (isBpMeasurementActive && heart > 0) {
                 bpHrValues.add(heart)
-                // Also collect temperature if available for better BP estimation
                 if (temp > 0) {
                     val normalizedTemp = if (temp > 1000) temp / 10 else temp
                     bpPpgValues.add(normalizedTemp)
                 }
             }
             
-            // Temperature from HR callback is *100 (e.g., 3638 = 36.38°C)
-            // Normalize to *10 format for consistency (3638 -> 364)
             val normalizedTemp = if (temp > 1000) temp / 10 else temp
             sendHealthData("heartRate", mapOf(
                 "heartRate" to heart, "hrv" to heartRota, "stress" to yaLi, "temperature" to normalizedTemp
             ))
-            // Forward temperature separately for the temperature card
             if (temp > 0) {
                 sendHealthData("temperature", mapOf("temperature" to normalizedTemp))
             }
@@ -408,10 +466,8 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
         override fun resultData(heart: Int, q2: Int, temp: Int) {
             Log.d(TAG, "SpO2 Data: HR=$heart, SpO2=$q2, temp=$temp")
-            // Temperature from SpO2 callback is *100, normalize to *10
             val normalizedTemp = if (temp > 1000) temp / 10 else temp
             sendHealthData("spo2", mapOf("heartRate" to heart, "spo2" to q2, "temperature" to normalizedTemp))
-            // Forward normalized temperature
             if (temp > 0) {
                 sendHealthData("temperature", mapOf("temperature" to normalizedTemp))
             }
@@ -434,7 +490,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private val tempListener = object : ITempListener {
         override fun resultData(temp: Int) {
             Log.d(TAG, "Temperature result: $temp (raw value, divide by 10 for °C)")
-            // The SDK returns temperature * 10 (e.g., 365 = 36.5°C)
             sendHealthData("temperature", mapOf("temperature" to temp))
         }
         override fun testing(temp: Int) {
@@ -447,9 +502,7 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
     }
 
-    // ─── Blood Pressure Listener (PPG-based) ─────────────────
-    // Note: This SDK provides PPG waveform data, not calculated BP values.
-    // We estimate BP from PPG pulse features using a simplified algorithm.
+    // ─── Blood Pressure Listener ─────────────────
 
     private val bpPpgValues = mutableListOf<Int>()
     private var bpMeasurementStartTime = 0L
@@ -458,7 +511,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         override fun progress(progress: Int) {
             Log.d(TAG, "BP progress: $progress%")
             sendHealthData("bpProgress", mapOf("progress" to progress))
-            // Estimate and send BP when progress reaches 100
             if (progress >= 100) {
                 estimateAndSendBloodPressure()
             }
@@ -470,18 +522,15 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
         override fun waveformData(seq: Byte, number: Byte, waveData: String?) {
             if (waveData != null) {
-                // Parse and accumulate PPG values for BP estimation
                 try {
                     val values = waveData.split(",").mapNotNull { it.toIntOrNull() }
                     bpPpgValues.addAll(values)
-                    // Keep only recent values to avoid memory issues
                     if (bpPpgValues.size > 1000) {
                         bpPpgValues.subList(0, bpPpgValues.size - 1000).clear()
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to parse BP waveform data", e)
                 }
-                // Forward to Flutter for display
                 sendHealthData("bpWaveform", mapOf(
                     "seq" to seq.toInt(),
                     "count" to number.toInt(),
@@ -492,7 +541,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         override fun bpResultData(bean: GreenAndIrBean?) {
             if (bean != null) {
                 Log.d(TAG, "BP result data: $bean")
-                // Use Green LED values for additional PPG data
                 val greenValues = listOfNotNull(
                     bean.green1_B, bean.green1_C, bean.green1_D, bean.green1_E
                 ).map { it.toInt() }
@@ -513,11 +561,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
     }
 
-    /**
-     * Estimate blood pressure from accumulated PPG data.
-     * This uses a simplified approach based on pulse transit time principles.
-     * In a real implementation, this would use calibrated user-specific coefficients.
-     */
     private fun estimateAndSendBloodPressure() {
         if (bpPpgValues.size < 10) {
             Log.w(TAG, "Not enough PPG data for BP estimation")
@@ -525,7 +568,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             return
         }
 
-        // Calculate pulse features from PPG data
         val (systolic, diastolic) = estimateBPFromPPG(bpPpgValues)
 
         Log.d(TAG, "Estimated BP: $systolic/$diastolic mmHg from ${bpPpgValues.size} PPG samples")
@@ -538,15 +580,9 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         bpPpgValues.clear()
     }
 
-    /**
-     * Simplified BP estimation from PPG signal features.
-     * Uses amplitude and waveform characteristics to estimate pressure ranges.
-     * Note: Real BP estimation requires calibration and more complex algorithms.
-     */
     private fun estimateBPFromPPG(ppgValues: List<Int>): Pair<Int, Int> {
         if (ppgValues.isEmpty()) return 120 to 80
 
-        // Find peaks and valleys in PPG signal
         val peaks = mutableListOf<Int>()
         val valleys = mutableListOf<Int>()
 
@@ -559,38 +595,27 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
 
         if (peaks.isEmpty() || valleys.isEmpty()) {
-            // No clear pulses detected, return default estimates
             return 118 to 78
         }
 
-        // Calculate amplitude features
         val avgPeak = peaks.average()
         val avgValley = valleys.average()
         val amplitude = avgPeak - avgValley
         val peakToPeakVariation = peaks.maxOrNull()?.minus(peaks.minOrNull() ?: 0) ?: 0
 
-        // Simplified estimation based on signal characteristics
-        // Higher amplitude generally correlates with stronger pulse pressure (higher systolic)
-        // More variation can indicate arterial stiffness (higher BP)
-
-        // Base values (typical resting BP)
         var systolic = 115
         var diastolic = 75
 
-        // Adjust based on signal amplitude (normalized)
         val normalizedAmp = amplitude / 1000.0
         systolic += (normalizedAmp * 15).toInt().coerceIn(-10, 25)
         diastolic += (normalizedAmp * 8).toInt().coerceIn(-5, 15)
 
-        // Adjust based on pulse variation (arterial stiffness indicator)
         val variationFactor = peakToPeakVariation / 500.0
         systolic += (variationFactor * 10).toInt().coerceIn(-5, 15)
 
-        // Ensure physiologic limits
         systolic = systolic.coerceIn(90, 180)
         diastolic = diastolic.coerceIn(60, 110)
 
-        // Ensure proper pressure difference (pulse pressure)
         if (systolic - diastolic < 30) {
             systolic = diastolic + 35
         } else if (systolic - diastolic > 60) {
@@ -609,18 +634,13 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
     }
 
-    /**
-     * Stop BP measurement and clean up resources
-     */
     private fun stopBloodPressureMeasurement() {
         isBpMeasurementActive = false
         bpMeasurementJob?.let { mainHandler.removeCallbacks(it) }
         bpMeasurementJob = null
         
-        // Stop the heart rate listener that was started for BP
         LmAPI.GET_HEART_ROTA(0x00.toByte(), 0x30.toByte(), heartListener)
         
-        // Also try to stop native BP measurement if it was started
         try {
             LmAPI.STOP_BLOOD_PRESSURE_M()
         } catch (e: Exception) {
@@ -628,11 +648,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
     }
 
-    /**
-     * Estimate blood pressure from accumulated heart rate data.
-     * This is used when the ring's IBloodPressureListener doesn't fire.
-     * Uses HR variability and average HR to estimate BP.
-     */
     private fun estimateBPFromHeartRateData() {
         if (bpHrValues.isEmpty()) {
             Log.w(TAG, "No HR data collected for BP estimation")
@@ -646,32 +661,25 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             kotlin.math.sqrt(variance)
         } else 0.0
 
-        // Base BP estimation from average heart rate
-        // Higher HR generally correlates with higher BP
         var systolic = 110 + ((avgHr - 70) * 0.5).toInt()
         var diastolic = 70 + ((avgHr - 70) * 0.3).toInt()
 
-        // Adjust based on HR variability (higher variation = more elastic arteries = lower BP)
         if (hrVariation > 5) {
             systolic -= 5
             diastolic -= 3
         }
 
-        // Adjust based on temperature if available
         if (bpPpgValues.isNotEmpty()) {
-            val avgTemp = bpPpgValues.average() / 10.0 // Convert from *10 to actual temp
-            // Higher temperature can slightly increase BP
+            val avgTemp = bpPpgValues.average() / 10.0
             if (avgTemp > 37.0) {
                 systolic += 2
                 diastolic += 1
             }
         }
 
-        // Ensure physiologic limits
         systolic = systolic.coerceIn(100, 160)
         diastolic = diastolic.coerceIn(65, 100)
 
-        // Ensure proper pulse pressure
         if (systolic - diastolic < 30) {
             systolic = diastolic + 35
         }
@@ -684,7 +692,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "avgHeartRate" to avgHr.toInt()
         ))
 
-        // Clear collected data
         bpHrValues.clear()
         bpPpgValues.clear()
     }
@@ -732,7 +739,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         if (code == 7) {
             BLEUtils.setGetToken(true)
             sendConnectionState("connected")
-            // Request device info after connection — stagger to avoid command overlap
             mainHandler.postDelayed({
                 Log.d(TAG, "Auto-requesting battery after connect")
                 LmAPI.GET_BATTERY(0x00.toByte())
@@ -766,6 +772,18 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         BLEUtils.setGetToken(false)
         sendConnectionState("disconnected")
         sendHealthData("connectionError", mapOf("code" to code))
+        
+        // Auto-reconnect if enabled
+        if (isAutoReconnect && connectedMac != null) {
+            Log.i(TAG, "Auto-reconnect enabled, attempting reconnect...")
+            mainHandler.postDelayed({
+                activityBinding?.activity?.let { activity ->
+                    val adapter = BluetoothAdapter.getDefaultAdapter()
+                    val remote = adapter?.getRemoteDevice(connectedMac)
+                    remote?.let { BLEUtils.connectLockByBLE(activity, it) }
+                }
+            }, 3000)
+        }
     }
 
     override fun VERSION(type: Byte, version: String?) {
@@ -785,7 +803,10 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
     }
 
-    override fun clearStepCount(data: Byte) {}
+    override fun clearStepCount(data: Byte) {
+        Log.d(TAG, "Clear step count result: $data")
+        sendHealthData("clearSteps", mapOf("status" to data.toInt()))
+    }
 
     override fun battery(b: Byte, level: Byte) {
         Log.d(TAG, "Received Battery Callback: ${level.toInt() and 0xFF}% (charging=${b.toInt() == 1})")
@@ -797,22 +818,55 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         sendHealthData("battery", mapOf("isCharging" to (b.toInt() == 1), "level" to (level.toInt() and 0xFF)))
     }
 
+    // Settings callbacks
+    override fun setBlueToolName(data: Byte) {
+        Log.d(TAG, "Set bluetooth name result: $data")
+        sendHealthData("setBluetoothName", mapOf("success" to (data.toInt() == 1)))
+    }
+
+    override fun readBlueToolName(len: Byte, name: String?) {
+        Log.d(TAG, "Read bluetooth name: $name")
+        sendHealthData("bluetoothName", mapOf("name" to (name ?: "")))
+    }
+
+    override fun setCollection(result: Byte) {
+        Log.d(TAG, "Set collection period result: $result")
+        sendHealthData("setCollectionPeriod", mapOf("success" to (result.toInt() == 1)))
+    }
+
+    override fun getCollection(bytes: ByteArray?) {
+        val period = bytes?.firstOrNull()?.toInt() ?: 5
+        Log.d(TAG, "Get collection period: $period")
+        sendHealthData("collectionPeriod", mapOf("period" to period))
+    }
+
+    // Note: restoreFactorySettings callback not available in IResponseListener interface
+
     override fun timeOut() {}
     override fun saveData(s: String?) {}
     override fun reset(bytes: ByteArray?) {}
-    override fun setCollection(result: Byte) {}
-    override fun getCollection(bytes: ByteArray?) {}
     override fun getSerialNum(bytes: ByteArray?) {}
     override fun setSerialNum(b: Byte) {}
-    override fun cleanHistory(data: Byte) {}
-    override fun setBlueToolName(data: Byte) {}
-    override fun readBlueToolName(len: Byte, name: String?) {}
+    override fun cleanHistory(data: Byte) {
+        Log.d(TAG, "Clean history result: $data")
+        sendHealthData("deleteHistory", mapOf("success" to (data.toInt() == 1)))
+    }
     override fun stopRealTimeBP(isSend: Byte) {}
     override fun BPwaveformData(seq: Byte, number: Byte, waveDate: String?) {}
     override fun onSport(type: Int, data: ByteArray?) {}
     override fun breathLight(time: Byte) {}
-    override fun SET_HID(result: Byte) {}
-    override fun GET_HID(touch: Byte, gesture: Byte, system: Byte) {}
+    override fun SET_HID(result: Byte) {
+        Log.d(TAG, "SET_HID result: $result")
+        sendHealthData("setHIDMode", mapOf("success" to (result.toInt() == 1)))
+    }
+    override fun GET_HID(touch: Byte, gesture: Byte, system: Byte) {
+        Log.d(TAG, "GET_HID: touch=$touch, gesture=$gesture, system=$system")
+        sendHealthData("hidMode", mapOf(
+            "touchMode" to touch.toInt(),
+            "gestureMode" to gesture.toInt(),
+            "systemType" to system.toInt()
+        ))
+    }
     override fun GET_HID_CODE(bytes: ByteArray?) {}
     override fun GET_CONTROL_AUDIO_ADPCM(b: Byte) {}
     override fun SET_AUDIO_ADPCM_AUDIO(b: Byte) {}
@@ -833,7 +887,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     override fun motionCalibration(b: Byte) {}
     override fun stopBloodPressure(b: Byte) {
         Log.d(TAG, "stopBloodPressure called with result: $b")
-        // Ensure we send BP estimate when measurement stops
         if (bpPpgValues.isNotEmpty()) {
             estimateAndSendBloodPressure()
         }
@@ -852,7 +905,6 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             if (sink != null) {
                 sink.success(event)
             } else {
-                // Queue events that arrive before Flutter subscribes to the stream
                 Log.w(TAG, "healthEventSink is null, queuing event: $type")
                 pendingHealthEvents.add(event)
             }

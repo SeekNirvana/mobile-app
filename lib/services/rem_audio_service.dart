@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../providers/health_provider.dart';
 import '../providers/ring_provider.dart';
 
 // Local audio assets for lucid dreaming sounds
@@ -241,6 +239,7 @@ class RemAudioService extends ChangeNotifier {
   List<String> get availableSounds => _soundAssets.keys.toList();
   bool get isPlaying => _isPlaying;
 
+  @override
   void dispose() {
     _healthSub?.cancel();
     _remCheckTimer?.cancel();

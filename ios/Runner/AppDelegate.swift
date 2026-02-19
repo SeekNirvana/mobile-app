@@ -12,5 +12,9 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Manually register RingPlugin (local plugin not in GeneratedPluginRegistrant)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "RingPlugin") {
+      RingPlugin.register(with: registrar)
+    }
   }
 }

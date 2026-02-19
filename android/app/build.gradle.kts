@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.seeknirvana.seeknirvana"
+    namespace = "com.seeknirvana.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.seeknirvana.seeknirvana"
+        applicationId = "com.seeknirvana.app"
         minSdk = 27  // ChipletRing SDK requires API 27+
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -30,6 +30,12 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Seeknirvana</string>
+	<string>Seek Nirvana</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -49,6 +49,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Seek Nirvana needs Bluetooth to scan for and connect to your smart ring to track your health data (heart rate, sleep, SpO2, etc.).</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Seek Nirvana needs Bluetooth to scan for and connect to your smart ring to track your health data (heart rate, sleep, SpO2, etc.).</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

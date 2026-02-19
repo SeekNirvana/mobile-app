@@ -4,7 +4,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/ring_provider.dart';
 import '../../providers/theme_provider.dart';
-import '../../plugins/ring_sdk/models/scanned_device.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
 
 class ProfileScreen extends ConsumerWidget {
