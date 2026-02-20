@@ -87,8 +87,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
       _permissionErrorMessage = null;
     });
 
-    // On iOS, trigger the native permission dialog first
-    // This initializes CBCentralManager which triggers the permission prompt
+    // On iOS, use native CoreBluetooth permission check
+    // permission_handler package doesn't properly map to CoreBluetooth on iOS
     if (Platform.isIOS) {
       final iosPermissionStatus = await _requestBluetoothPermissionIOS();
       if (iosPermissionStatus == 'denied' || iosPermissionStatus == 'restricted') {
@@ -98,6 +98,20 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
         });
         return;
       }
+      
+      // On iOS, if native permission is granted, check if Bluetooth is enabled
+      final isBluetoothOn = await _isBluetoothEnabled();
+      if (!isBluetoothOn) {
+        setState(() {
+          _permissionState = BluetoothPermissionState.bluetoothOff;
+        });
+        return;
+      }
+      
+      // iOS permission granted and Bluetooth is on - proceed with scan
+      setState(() => _permissionState = BluetoothPermissionState.granted);
+      _startRealScan();
+      return;
     }
 
     // First check if Bluetooth is enabled
@@ -109,7 +123,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
       return;
     }
 
-    // Check and request BLE permissions
+    // Check and request BLE permissions (Android only)
     final permissionsToRequest = <Permission>[
       Permission.bluetooth,
       Permission.bluetoothScan,
