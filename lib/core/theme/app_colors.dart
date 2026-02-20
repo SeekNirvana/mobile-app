@@ -23,6 +23,7 @@ class AppColors {
   static const Color steps = Color(0xFF7C4DFF);
   static const Color sleep = Color(0xFF5C6BC0);
   static const Color hrv = Color(0xFFAB47BC);
+  static const Color stress = Color(0xFFFFA000);  // Amber/Orange for stress
   static const Color calories = Color(0xFFFF7043);
 
   // Sleep stage colors - Vibrant & distinct for visibility on all backgrounds

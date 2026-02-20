@@ -8,6 +8,56 @@ import '../../providers/health_provider.dart';
 import '../../shared/widgets/health_card.dart';
 import '../../shared/widgets/connection_indicator.dart';
 
+/// Logo widget for SeekNirvana - displays as circular with border
+class SeekNirvanaLogo extends StatelessWidget {
+  final double size;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final double borderWidth;
+  final double padding; // Padding as fraction of size (0.0 to 1.0)
+
+  const SeekNirvanaLogo({
+    super.key, 
+    required this.size, 
+    this.backgroundColor,
+    this.borderColor,
+    this.borderWidth = 2,
+    this.padding = 0.10, // Default 10% padding
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: backgroundColor ?? (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.9)),
+        border: borderColor != null 
+          ? Border.all(color: borderColor!, width: borderWidth)
+          : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      // Use ClipBehavior to ensure circular clipping
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.all(size * padding),
+        child: Image.asset(
+          'assets/SeekNirvana_Logo.png',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+}
+
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -31,30 +81,41 @@ class HomeScreen extends ConsumerWidget {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            // App bar
+            // App bar with Logo
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'SeekNirvana',
-                          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Your wellness dashboard',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
+                    // Logo - smaller to match text
+                    SeekNirvanaLogo(
+                      size: 40,
+                      borderColor: AppColors.primary.withValues(alpha: 0.3),
+                      borderWidth: 1.5,
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 16),
+                    // App name and tagline
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'SeekNirvana',
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Your wellness dashboard',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
                     ConnectionIndicator(
                       state: connectionState,
                       onTap: () => context.push('/scan'),
@@ -67,14 +128,14 @@ class HomeScreen extends ConsumerWidget {
             // Health Score
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 child: _HealthScoreCard(score: healthScore, isDark: isDark),
               ),
             ),
 
             // Quick Metrics Grid
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
@@ -134,6 +195,15 @@ class HomeScreen extends ConsumerWidget {
                     icon: Icons.bedtime_rounded,
                     color: AppColors.sleep,
                     onTap: () => context.go('/sleep'),
+                  ),
+                  HealthCard(
+                    title: 'Stress',
+                    value: stress > 0 ? '$stress' : '--',
+                    unit: '',
+                    subtitle: stress > 0 ? (stress <= 30 ? 'Relaxed' : stress <= 60 ? 'Normal' : 'Stressed') : 'Not measured',
+                    icon: Icons.psychology_rounded,
+                    color: AppColors.stress,
+                    onTap: () => context.go('/vitals'),
                   ),
                 ]),
               ),
@@ -217,27 +287,32 @@ class _HealthScoreCard extends StatelessWidget {
               ],
             ),
           ),
+          // Logo with progress ring
           SizedBox(
-            width: 100,
-            height: 100,
+            width: 120,
+            height: 120,
             child: Stack(
               alignment: Alignment.center,
               children: [
+                // Progress ring
                 SizedBox(
-                  width: 90,
-                  height: 90,
+                  width: 110,
+                  height: 110,
                   child: CircularProgressIndicator(
                     value: score / 100,
-                    strokeWidth: 8,
-                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    strokeWidth: 10,
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
                     valueColor: const AlwaysStoppedAnimation(Colors.white),
                     strokeCap: StrokeCap.round,
                   ),
                 ),
-                const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: Colors.white,
-                  size: 32,
+                // Logo in the center - enlarged by reducing padding
+                SeekNirvanaLogo(
+                  size: 88,
+                  backgroundColor: Colors.white,
+                  borderColor: Colors.white.withValues(alpha: 0.5),
+                  borderWidth: 3,
+                  padding: 0.04, // Reduced padding for bigger logo
                 ),
               ],
             ),

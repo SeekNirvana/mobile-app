@@ -244,6 +244,7 @@ class RemAudioService extends ChangeNotifier {
     _healthSub?.cancel();
     _remCheckTimer?.cancel();
     _audioPlayer?.dispose();
+    super.dispose();
   }
 }
 

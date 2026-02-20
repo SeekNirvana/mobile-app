@@ -10,6 +10,7 @@ class AppScaffold extends StatelessWidget {
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     if (location.startsWith('/vitals')) return 1;
+    if (location.startsWith('/sleep')) return 1; // Sleep shows Vitals as selected
     if (location.startsWith('/activities')) return 2;
     if (location.startsWith('/profile')) return 3;
     return 0;
