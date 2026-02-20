@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../plugins/ring_sdk/models/ring_connection_state.dart';
 import '../plugins/ring_sdk/models/scanned_device.dart';
