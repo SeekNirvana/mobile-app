@@ -143,19 +143,35 @@ class RingDataService {
         case 'temperature':
           final temp = data['temperature'] as int?;
           if (temp != null && temp > 0) {
-            // SDK returns temp * 10 (e.g., 365 = 36.5°C)
-            ref.read(temperatureProvider.notifier).state = temp / 10.0;
+            // Handle different SDK formats:
+            // Android: temp * 10 (e.g., 365 = 36.5°C)
+            // iOS: temp * 100 (e.g., 3634 = 36.34°C)
+            double normalizedTemp;
+            if (temp > 1000) {
+              // Likely iOS format (temp * 100)
+              normalizedTemp = temp / 100.0;
+            } else {
+              // Android format (temp * 10)
+              normalizedTemp = temp / 10.0;
+            }
+            ref.read(temperatureProvider.notifier).state = normalizedTemp;
             ref.read(temperatureMeasuringProvider.notifier).state = false;
-            debugPrint('[RingDataService] Temperature: ${temp / 10.0}°C');
+            debugPrint('[RingDataService] Temperature: $normalizedTemp°C (raw: $temp)');
           }
           break;
 
         case 'temperatureTesting':
           final temp = data['temperature'] as int?;
           if (temp != null && temp > 0) {
-            ref.read(temperatureProvider.notifier).state = temp / 10.0;
+            double normalizedTemp;
+            if (temp > 1000) {
+              normalizedTemp = temp / 100.0;
+            } else {
+              normalizedTemp = temp / 10.0;
+            }
+            ref.read(temperatureProvider.notifier).state = normalizedTemp;
             // Keep measuring state true during testing
-            debugPrint('[RingDataService] Temperature (testing): ${temp / 10.0}°C');
+            debugPrint('[RingDataService] Temperature (testing): $normalizedTemp°C');
           }
           break;
 

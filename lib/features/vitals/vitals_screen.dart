@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -9,11 +10,94 @@ import '../../providers/ring_provider.dart';
 
 import '../../plugins/ring_sdk/ring_plugin.dart';
 
-class VitalsScreen extends ConsumerWidget {
+class VitalsScreen extends ConsumerStatefulWidget {
   const VitalsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VitalsScreen> createState() => _VitalsScreenState();
+}
+
+class _VitalsScreenState extends ConsumerState<VitalsScreen> {
+  // Safety timeouts to prevent spinner from spinning forever
+  Timer? _hrTimeout;
+  Timer? _spo2Timeout;
+  Timer? _tempTimeout;
+  Timer? _bpTimeout;
+  
+  static const _safetyTimeout = Duration(seconds: 30);
+  static const _bpSafetyTimeout = Duration(seconds: 60);
+
+  @override
+  void dispose() {
+    _hrTimeout?.cancel();
+    _spo2Timeout?.cancel();
+    _tempTimeout?.cancel();
+    _bpTimeout?.cancel();
+    super.dispose();
+  }
+
+  void _startSafetyTimeout(String type) {
+    debugPrint('[VitalsScreen] Starting $type measurement safety timeout');
+    switch (type) {
+      case 'hr':
+        _hrTimeout?.cancel();
+        _hrTimeout = Timer(_safetyTimeout, () {
+          debugPrint('[VitalsScreen] HR safety timeout - resetting measuring state');
+          if (mounted) {
+            ref.read(heartRateMeasuringProvider.notifier).state = false;
+          }
+        });
+        break;
+      case 'spo2':
+        _spo2Timeout?.cancel();
+        _spo2Timeout = Timer(_safetyTimeout, () {
+          debugPrint('[VitalsScreen] SpO2 safety timeout - resetting measuring state');
+          if (mounted) {
+            ref.read(spo2MeasuringProvider.notifier).state = false;
+          }
+        });
+        break;
+      case 'temp':
+        _tempTimeout?.cancel();
+        _tempTimeout = Timer(_safetyTimeout, () {
+          debugPrint('[VitalsScreen] Temperature safety timeout - resetting measuring state');
+          if (mounted) {
+            ref.read(temperatureMeasuringProvider.notifier).state = false;
+          }
+        });
+        break;
+      case 'bp':
+        _bpTimeout?.cancel();
+        _bpTimeout = Timer(_bpSafetyTimeout, () {
+          debugPrint('[VitalsScreen] BP safety timeout - resetting measuring state');
+          if (mounted) {
+            ref.read(bpMeasuringProvider.notifier).state = false;
+          }
+        });
+        break;
+    }
+  }
+
+  void _cancelSafetyTimeout(String type) {
+    debugPrint('[VitalsScreen] Canceling $type safety timeout');
+    switch (type) {
+      case 'hr':
+        _hrTimeout?.cancel();
+        break;
+      case 'spo2':
+        _spo2Timeout?.cancel();
+        break;
+      case 'temp':
+        _tempTimeout?.cancel();
+        break;
+      case 'bp':
+        _bpTimeout?.cancel();
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final hrData = ref.watch(heartRateProvider);
     final hr = hrData['heartRate'] as int? ?? 0;
     final spo2Data = ref.watch(spo2Provider);
@@ -69,7 +153,7 @@ class VitalsScreen extends ConsumerWidget {
                         iconColor: AppColors.heartRate,
                         status: _getHRZone(hr),
                         isActive: hr > 0,
-                        onMeasure: () => _toggleHeartRate(ref),
+                        onMeasure: _toggleHeartRate,
                         isMeasuring: ref.watch(heartRateMeasuringProvider),
                         child: hrHistory.isNotEmpty
                             ? _MiniChart(data: hrHistory, color: AppColors.heartRate)
@@ -87,7 +171,7 @@ class VitalsScreen extends ConsumerWidget {
                         status: spo2 >= 95 ? 'Normal' : (spo2 > 0 ? 'Low' : 'Not measured'),
                         isActive: spo2 > 0,
                         statusColor: spo2 >= 95 ? AppColors.success : (spo2 > 0 ? AppColors.warning : null),
-                        onMeasure: () => _toggleSpO2(ref),
+                        onMeasure: _toggleSpO2,
                         isMeasuring: ref.watch(spo2MeasuringProvider),
                         child: spo2 > 0 ? _GaugeIndicator(value: spo2, color: AppColors.spo2) : null,
                       ),
@@ -112,7 +196,7 @@ class VitalsScreen extends ConsumerWidget {
                         iconColor: AppColors.temperature,
                         status: temperature > 0 ? _getTempCategory(temperature) : 'Not measured',
                         isActive: temperature > 0,
-                        onMeasure: () => _startTemperature(ref),
+                        onMeasure: _startTemperature,
                         isMeasuring: ref.watch(temperatureMeasuringProvider),
                       ),
                     ),
@@ -126,7 +210,7 @@ class VitalsScreen extends ConsumerWidget {
                         iconColor: AppColors.bloodPressure,
                         status: systolic > 0 ? _getBPCategory(systolic, diastolic) : 'PPG-based',
                         isActive: systolic > 0,
-                        onMeasure: () => _toggleBloodPressure(ref),
+                        onMeasure: _toggleBloodPressure,
                         isMeasuring: ref.watch(bpMeasuringProvider),
                         child: ref.watch(bpMeasuringProvider) && ref.watch(ppgWaveformProvider).isNotEmpty
                             ? _WaveformPreview(data: ref.watch(ppgWaveformProvider), color: AppColors.bloodPressure)
@@ -143,41 +227,48 @@ class VitalsScreen extends ConsumerWidget {
     );
   }
 
-  void _toggleHeartRate(WidgetRef ref) {
+  void _toggleHeartRate() {
     final isMeasuring = ref.read(heartRateMeasuringProvider);
     if (isMeasuring) {
+      _cancelSafetyTimeout('hr');
       RingPlugin.stopHeartRate();
       ref.read(heartRateMeasuringProvider.notifier).state = false;
     } else {
+      _startSafetyTimeout('hr');
       RingPlugin.startHeartRate();
       ref.read(heartRateMeasuringProvider.notifier).state = true;
     }
   }
 
-  void _toggleSpO2(WidgetRef ref) {
+  void _toggleSpO2() {
     final isMeasuring = ref.read(spo2MeasuringProvider);
     if (isMeasuring) {
+      _cancelSafetyTimeout('spo2');
       RingPlugin.stopSpO2();
       ref.read(spo2MeasuringProvider.notifier).state = false;
     } else {
+      _startSafetyTimeout('spo2');
       RingPlugin.startSpO2();
       ref.read(spo2MeasuringProvider.notifier).state = true;
     }
   }
 
-  void _startTemperature(WidgetRef ref) {
+  void _startTemperature() {
     if (!ref.read(temperatureMeasuringProvider)) {
+      _startSafetyTimeout('temp');
       ref.read(temperatureMeasuringProvider.notifier).state = true;
       RingPlugin.startTemperature();
     }
   }
 
-  void _toggleBloodPressure(WidgetRef ref) {
+  void _toggleBloodPressure() {
     final isMeasuring = ref.read(bpMeasuringProvider);
     if (isMeasuring) {
+      _cancelSafetyTimeout('bp');
       RingPlugin.stopBloodPressure();
       ref.read(bpMeasuringProvider.notifier).state = false;
     } else {
+      _startSafetyTimeout('bp');
       ref.read(bpMeasuringProvider.notifier).state = true;
       ref.read(bpProgressValueProvider.notifier).state = 0;
       ref.read(ppgWaveformProvider.notifier).state = [];
