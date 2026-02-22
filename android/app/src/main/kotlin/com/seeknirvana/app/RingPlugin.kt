@@ -61,6 +61,9 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     // Queued events that arrived before the Flutter stream was ready
     private val pendingHealthEvents = mutableListOf<Map<String, Any?>>()
+    
+    // Command queue for proper BLE command timing (300ms spacing)
+    private val commandQueue = CommandQueue()
 
     // ─── FlutterPlugin ────────────────────────────────────────
 
@@ -218,6 +221,7 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(null)
             }
             "disconnect" -> {
+                commandQueue.reset()
                 if (activity != null) {
                     BLEUtils.disconnectBLE(activity)
                     sendConnectionState("disconnected")
@@ -235,28 +239,40 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             // MARK: - Device Info
             "getBattery" -> {
                 Log.d(TAG, "MethodChannel: getBattery called")
-                LmAPI.GET_BATTERY(0x00.toByte())
+                commandQueue.enqueue {
+                    LmAPI.GET_BATTERY(0x00.toByte())
+                }
                 result.success(null)
             }
             "getChargingState" -> {
                 Log.d(TAG, "MethodChannel: getChargingState called")
-                LmAPI.GET_BATTERY(0x01.toByte())
+                commandQueue.enqueue {
+                    LmAPI.GET_BATTERY(0x01.toByte())
+                }
                 result.success(null)
             }
             "getVersion" -> {
                 Log.d(TAG, "MethodChannel: getVersion called")
-                LmAPI.GET_VERSION(0x00.toByte())
-                mainHandler.postDelayed({ LmAPI.GET_VERSION(0x01.toByte()) }, 200)
+                commandQueue.enqueue {
+                    LmAPI.GET_VERSION(0x00.toByte())
+                }
+                commandQueue.enqueue {
+                    LmAPI.GET_VERSION(0x01.toByte())
+                }
                 result.success(null)
             }
             "syncTime" -> {
                 Log.d(TAG, "MethodChannel: syncTime called")
-                LmAPI.SYNC_TIME()
+                commandQueue.enqueue {
+                    LmAPI.SYNC_TIME()
+                }
                 result.success(null)
             }
             "getSteps" -> {
                 Log.d(TAG, "MethodChannel: getSteps called")
-                LmAPI.STEP_COUNTING()
+                commandQueue.enqueue {
+                    LmAPI.STEP_COUNTING()
+                }
                 result.success(null)
             }
             "clearSteps" -> {
@@ -350,7 +366,9 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             // MARK: - History
             "readHistory" -> {
                 sendHealthData("historyStart", emptyMap<String, Any>())
-                LmAPI.READ_HISTORY(0x01.toByte(), historyListener)
+                commandQueue.enqueue {
+                    LmAPI.READ_HISTORY(0x01.toByte(), historyListener)
+                }
                 result.success(null)
             }
             "deleteHistory" -> {
@@ -738,37 +756,41 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         Log.i(TAG, "lmBleConnectionSucceeded code=$code")
         if (code == 7) {
             BLEUtils.setGetToken(true)
+            commandQueue.onConnectionSucceeded()
             sendConnectionState("connected")
-            mainHandler.postDelayed({
+            
+            // Queue post-connection commands with proper 300ms spacing
+            commandQueue.enqueue {
                 Log.d(TAG, "Auto-requesting battery after connect")
                 LmAPI.GET_BATTERY(0x00.toByte())
-            }, 500)
-            mainHandler.postDelayed({
-                Log.d(TAG, "Auto-requesting version after connect")
+            }
+            commandQueue.enqueue {
+                Log.d(TAG, "Auto-requesting version (HW) after connect")
                 LmAPI.GET_VERSION(0x00.toByte())
-            }, 1000)
-            mainHandler.postDelayed({
-                Log.d(TAG, "Auto-requesting version type 1 after connect")
+            }
+            commandQueue.enqueue {
+                Log.d(TAG, "Auto-requesting version (SW) after connect")
                 LmAPI.GET_VERSION(0x01.toByte())
-            }, 1200)
-            mainHandler.postDelayed({
+            }
+            commandQueue.enqueue {
                 Log.d(TAG, "Auto-syncing time after connect")
                 LmAPI.SYNC_TIME()
-            }, 1500)
-            mainHandler.postDelayed({
+            }
+            commandQueue.enqueue {
                 Log.d(TAG, "Auto-requesting steps after connect")
                 LmAPI.STEP_COUNTING()
-            }, 2000)
-            mainHandler.postDelayed({
+            }
+            commandQueue.enqueue {
                 Log.d(TAG, "Auto-syncing history after connect")
                 sendHealthData("historyStart", emptyMap<String, Any>())
                 LmAPI.READ_HISTORY(0x00.toByte(), historyListener)
-            }, 4000)
+            }
         }
     }
 
     override fun lmBleConnectionFailed(code: Int) {
         Log.e(TAG, "lmBleConnectionFailed code=$code")
+        commandQueue.reset()
         BLEUtils.setGetToken(false)
         sendConnectionState("disconnected")
         sendHealthData("connectionError", mapOf("code" to code))

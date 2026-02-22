@@ -5,6 +5,7 @@ import '../plugins/ring_sdk/ring_plugin.dart';
 import '../providers/ring_provider.dart';
 import '../providers/health_provider.dart';
 import 'sleep_log_service.dart';
+import 'feature_detection_service.dart';
 
 /// Global service that listens to RingPlugin.rawHealthData and dispatches
 /// events to the correct Riverpod providers. Runs as long as the app is alive.
@@ -17,6 +18,9 @@ class RingDataService {
   }
 
   void _init() {
+    // Initialize RingPlugin for state tracking
+    RingPlugin.initialize();
+    
     _healthSub = RingPlugin.rawHealthData.listen((data) {
       final type = data['type'] as String?;
       if (type == null) return;
@@ -86,6 +90,18 @@ class RingDataService {
 
         case 'ecg':
           // ECG not supported by ring hardware — silently ignore
+          break;
+          
+        case 'capabilities':
+          // Handle capability flags from composite command (iOS)
+          debugPrint('[RingDataService] Received capability flags');
+          FeatureDetectionService.updateCapabilities(data);
+          break;
+          
+        case 'historyStatus':
+          // Handle history sync status updates
+          final status = data['status'] as String?;
+          debugPrint('[RingDataService] History status: $status');
           break;
 
         case 'bloodPressure':
@@ -203,6 +219,11 @@ class RingDataService {
         case 'historyComplete':
           final allRecords = ref.read(historyDataProvider);
           debugPrint('[RingDataService] History sync complete, total records: ${allRecords.length}');
+          
+          // Request capabilities if not already received (Android fallback)
+          if (!FeatureDetectionService.hasCapabilities) {
+            debugPrint('[RingDataService] Capabilities not detected, using defaults');
+          }
           
           // Process and store sleep data by date (async, don't block)
           sleepLogService.processNewRecords(allRecords).then((_) {

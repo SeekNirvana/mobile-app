@@ -22,6 +22,10 @@ import BCLRingSDK
     private var isBloodPressureMeasuring = false
     private var rssiTimer: Timer?
     
+    // Device capabilities (from composite command)
+    private var deviceCapabilities: [String: Any] = [:]
+    private var isHistorySyncing = false
+    
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = RingPlugin()
         instance.setupChannels(registrar: registrar)
@@ -389,6 +393,8 @@ import BCLRingSDK
         stopReadRSSI(result: { _ in })
         BCLRingManager.shared.disconnect()
         connectedDevice = nil
+        deviceCapabilities.removeAll()
+        isHistorySyncing = false
         sendConnectionState("disconnected")
         result(nil)
     }

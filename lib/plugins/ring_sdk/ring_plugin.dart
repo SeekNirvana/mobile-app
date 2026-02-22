@@ -1,13 +1,37 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:synchronized/synchronized.dart';
 import 'models/scanned_device.dart';
 import 'models/ring_connection_state.dart';
+
+/// Exception thrown when the ring is busy with another operation
+class RingBusyException implements Exception {
+  final String message;
+  RingBusyException(this.message);
+  @override
+  String toString() => 'RingBusyException: $message';
+}
+
+/// Exception thrown when a feature is not supported by the connected ring
+class RingFeatureNotSupportedException implements Exception {
+  final String feature;
+  RingFeatureNotSupportedException(this.feature);
+  @override
+  String toString() => 'RingFeatureNotSupportedException: $feature is not supported by this ring';
+}
 
 /// Flutter plugin bridge to the native ChipletRing SDK.
 ///
 /// Uses MethodChannel for commands and EventChannel for streams.
 /// Android: wraps ChipletRing .aar (com.lm.sdk.*)
 /// iOS: wraps BCLRingSDK.xcframework
+///
+/// This implementation follows Yongxin SDK best practices:
+/// - 3-second delay after connection before sending commands
+/// - 300ms minimum spacing between consecutive commands
+/// - No concurrent measurements allowed
+/// - History sync blocks measurements
 class RingPlugin {
   static const MethodChannel _channel = MethodChannel('com.seeknirvana.app/ring');
   static const EventChannel _scanChannel = EventChannel('com.seeknirvana.app/ring/scan');
@@ -19,6 +43,64 @@ class RingPlugin {
   static Stream<List<ScannedDevice>>? _scanStream;
   static Stream<RingConnectionState>? _connectionStream;
   static Stream<Map<String, dynamic>>? _healthStream;
+
+  // ── State Management ──
+  
+  static bool _isHistorySyncing = false;
+  static bool _isMeasuring = false;
+  static final _commandLock = Lock();
+  static final _measurementStateController = StreamController<bool>.broadcast();
+  static final _historySyncController = StreamController<bool>.broadcast();
+
+  /// Stream that emits true when any measurement is in progress
+  static Stream<bool> get measurementState => _measurementStateController.stream;
+  
+  /// Stream that emits true when history is syncing
+  static Stream<bool> get historySyncState => _historySyncController.stream;
+
+  /// Initialize the plugin and listen to health events for state tracking
+  static void initialize() {
+    rawHealthData.listen((data) {
+      final type = data['type'] as String?;
+      switch (type) {
+        case 'historyStart':
+          _isHistorySyncing = true;
+          _historySyncController.add(true);
+          break;
+        case 'historyComplete':
+        case 'historyError':
+          _isHistorySyncing = false;
+          _historySyncController.add(false);
+          break;
+        case 'heartRate':
+        case 'spo2':
+        case 'bloodPressure':
+        case 'temperature':
+          // Measurement completed
+          _isMeasuring = false;
+          _measurementStateController.add(false);
+          break;
+        case 'heartRateProgress':
+        case 'spo2Progress':
+        case 'bpProgress':
+          // Measurement started
+          if (!_isMeasuring) {
+            _isMeasuring = true;
+            _measurementStateController.add(true);
+          }
+          break;
+      }
+    });
+  }
+
+  /// Check if history sync is in progress
+  static bool get isHistorySyncing => _isHistorySyncing;
+  
+  /// Check if any measurement is in progress
+  static bool get isMeasuring => _isMeasuring;
+  
+  /// Check if ring is busy (syncing or measuring)
+  static bool get isBusy => _isHistorySyncing || _isMeasuring;
 
   // ── Bluetooth State ──
 
@@ -64,6 +146,7 @@ class RingPlugin {
   }
 
   static Future<void> disconnect() async {
+    _resetState();
     await _channel.invokeMethod('disconnect');
   }
 
@@ -118,34 +201,102 @@ class RingPlugin {
     await _channel.invokeMethod('clearSteps');
   }
 
-  // ── Health Measurements ──
+  // ── Health Measurements with Guards ──
 
+  /// Throws [RingBusyException] if history is syncing or another measurement is in progress
   static Future<void> startHeartRate() async {
-    await _channel.invokeMethod('startHeartRate');
+    await _assertCanStartMeasurement('Heart Rate');
+    
+    await _commandLock.synchronized(() async {
+      _isMeasuring = true;
+      _measurementStateController.add(true);
+      try {
+        await _channel.invokeMethod('startHeartRate');
+      } catch (e) {
+        _isMeasuring = false;
+        _measurementStateController.add(false);
+        rethrow;
+      }
+    });
   }
 
   static Future<void> stopHeartRate() async {
     await _channel.invokeMethod('stopHeartRate');
+    _isMeasuring = false;
+    _measurementStateController.add(false);
   }
 
+  /// Throws [RingBusyException] if history is syncing or another measurement is in progress
   static Future<void> startSpO2() async {
-    await _channel.invokeMethod('startSpO2');
+    await _assertCanStartMeasurement('SpO2');
+    
+    await _commandLock.synchronized(() async {
+      _isMeasuring = true;
+      _measurementStateController.add(true);
+      try {
+        await _channel.invokeMethod('startSpO2');
+      } catch (e) {
+        _isMeasuring = false;
+        _measurementStateController.add(false);
+        rethrow;
+      }
+    });
   }
 
   static Future<void> stopSpO2() async {
     await _channel.invokeMethod('stopSpO2');
+    _isMeasuring = false;
+    _measurementStateController.add(false);
   }
 
+  /// Throws [RingBusyException] if history is syncing or another measurement is in progress
   static Future<void> startBloodPressure() async {
-    await _channel.invokeMethod('startBloodPressure');
+    await _assertCanStartMeasurement('Blood Pressure');
+    
+    await _commandLock.synchronized(() async {
+      _isMeasuring = true;
+      _measurementStateController.add(true);
+      try {
+        await _channel.invokeMethod('startBloodPressure');
+      } catch (e) {
+        _isMeasuring = false;
+        _measurementStateController.add(false);
+        rethrow;
+      }
+    });
   }
 
   static Future<void> stopBloodPressure() async {
     await _channel.invokeMethod('stopBloodPressure');
+    _isMeasuring = false;
+    _measurementStateController.add(false);
   }
 
+  /// Throws [RingBusyException] if history is syncing or another measurement is in progress
   static Future<void> startTemperature() async {
-    await _channel.invokeMethod('startTemperature');
+    await _assertCanStartMeasurement('Temperature');
+    
+    await _commandLock.synchronized(() async {
+      _isMeasuring = true;
+      _measurementStateController.add(true);
+      try {
+        await _channel.invokeMethod('startTemperature');
+      } catch (e) {
+        _isMeasuring = false;
+        _measurementStateController.add(false);
+        rethrow;
+      }
+    });
+  }
+
+  /// Asserts that a measurement can be started
+  static Future<void> _assertCanStartMeasurement(String measurementType) async {
+    if (_isHistorySyncing) {
+      throw RingBusyException('Cannot start $measurementType measurement while history is syncing. Please wait for sync to complete.');
+    }
+    if (_isMeasuring) {
+      throw RingBusyException('Cannot start $measurementType measurement while another measurement is in progress. Please stop the current measurement first.');
+    }
   }
 
   // ── Health Data Stream (single cached broadcast stream) ──
@@ -159,6 +310,7 @@ class RingPlugin {
 
   // ── History ──
 
+  /// Note: History sync blocks measurements. Listen to [historySyncState] to check status.
   static Future<void> readHistory() async {
     await _channel.invokeMethod('readHistory');
   }
@@ -278,6 +430,18 @@ class RingPlugin {
     return result != null ? Map<String, dynamic>.from(result) : null;
   }
 
+  /// Set HID mode for gesture control
+  /// 
+  /// [touchMode] values:
+  /// - 0x01: Control music
+  /// - 0x02: Take photo
+  /// - 0x04: Upload real-time audio
+  /// - 0xFF: Close/Disable
+  ///
+  /// [gestureMode] values:
+  /// - 0x01: Pinch to take photo
+  /// - 0x02: Gesture video mode
+  /// - 0xFF: Close/Disable
   static Future<void> setHIDMode({
     int touchMode = 0,
     int gestureMode = 0,
@@ -292,5 +456,21 @@ class RingPlugin {
 
   static Future<void> vibrate({int seconds = 1}) async {
     await _channel.invokeMethod('vibrate', {'seconds': seconds});
+  }
+
+  // ── Utility Methods ──
+
+  /// Reset internal state (called on disconnect)
+  static void _resetState() {
+    _isHistorySyncing = false;
+    _isMeasuring = false;
+    _historySyncController.add(false);
+    _measurementStateController.add(false);
+  }
+
+  /// Dispose resources
+  static void dispose() {
+    _measurementStateController.close();
+    _historySyncController.close();
   }
 }
