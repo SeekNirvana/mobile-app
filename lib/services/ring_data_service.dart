@@ -98,6 +98,21 @@ class RingDataService {
           FeatureDetectionService.updateCapabilities(data);
           break;
           
+        case 'serialNumber':
+          final sn = data['sn'] as String?;
+          if (sn != null && sn.isNotEmpty) {
+            debugPrint('[RingDataService] Serial Number: $sn');
+            ref.read(serialNumberProvider.notifier).state = sn;
+          }
+          break;
+          
+        case 'rssi':
+          final rssi = data['rssi'] as int?;
+          if (rssi != null) {
+            ref.read(rssiProvider.notifier).state = rssi;
+          }
+          break;
+          
         case 'historyStatus':
           // Handle history sync status updates
           final status = data['status'] as String?;

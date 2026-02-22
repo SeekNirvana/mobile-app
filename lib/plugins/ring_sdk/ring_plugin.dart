@@ -185,6 +185,10 @@ class RingPlugin {
     await _channel.invokeMethod('getChargingState');
   }
 
+  static Future<void> getSerialNumber() async {
+    await _channel.invokeMethod('getSerialNumber');
+  }
+
   static Future<void> getVersion() async {
     await _channel.invokeMethod('getVersion');
   }

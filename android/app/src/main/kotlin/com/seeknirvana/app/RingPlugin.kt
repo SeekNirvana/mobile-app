@@ -23,6 +23,8 @@ import com.lm.sdk.inter.IQ2Listener
 import com.lm.sdk.inter.IHistoryListener
 import com.lm.sdk.inter.ITempListener
 import com.lm.sdk.inter.IBloodPressureListener
+import com.lm.sdk.inter.ISNListener
+import com.lm.sdk.BLEService
 import com.lm.sdk.mode.GreenAndIrBean
 import com.lm.sdk.mode.SystemControlBean
 import com.lm.sdk.mode.HistoryDataBean
@@ -229,10 +231,14 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(null)
             }
             "startReadRSSI" -> {
-                // RSSI is already reported during scan, but we could add periodic reading
+                Log.d(TAG, "MethodChannel: startReadRSSI called")
+                commandQueue.enqueue {
+                    BLEService.readRomoteRssi()
+                }
                 result.success(null)
             }
             "stopReadRSSI" -> {
+                Log.d(TAG, "MethodChannel: stopReadRSSI called")
                 result.success(null)
             }
             
@@ -248,6 +254,19 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 Log.d(TAG, "MethodChannel: getChargingState called")
                 commandQueue.enqueue {
                     LmAPI.GET_BATTERY(0x01.toByte())
+                }
+                result.success(null)
+            }
+            "getSerialNumber" -> {
+                Log.d(TAG, "MethodChannel: getSerialNumber called")
+                commandQueue.enqueue {
+                    LmAPI.GET_SN(object : ISNListener {
+                        override fun getSn(sn: String?) {
+                            Log.d(TAG, "Serial Number received: $sn")
+                            sendHealthData("serialNumber", mapOf("sn" to (sn ?: "")))
+                        }
+                        override fun setSn(success: Boolean) {}
+                    })
                 }
                 result.success(null)
             }

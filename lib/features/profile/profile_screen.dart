@@ -5,6 +5,7 @@ import '../../core/constants/app_constants.dart';
 import '../../providers/ring_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
+import '../../plugins/ring_sdk/models/ring_connection_state.dart';
 import '../../services/feature_detection_service.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -16,8 +17,19 @@ class ProfileScreen extends ConsumerWidget {
     final device = ref.watch(connectedDeviceProvider);
     final battery = ref.watch(batteryLevelProvider);
     final firmware = ref.watch(firmwareVersionProvider);
+    final serialNumber = ref.watch(serialNumberProvider);
+    final rssi = ref.watch(rssiProvider);
     final themeMode = ref.watch(themeModeProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Start RSSI monitoring when connected
+    ref.listen(ringConnectionStateProvider, (previous, current) {
+      if (current == RingConnectionState.connected) {
+        RingPlugin.startReadRSSI();
+      } else if (previous == RingConnectionState.connected) {
+        RingPlugin.stopReadRSSI();
+      }
+    });
 
     return Scaffold(
       body: SafeArea(
@@ -89,6 +101,21 @@ class ProfileScreen extends ConsumerWidget {
                 _InfoRow(label: 'Battery', value: battery > 0 ? '$battery%' : '--', icon: Icons.battery_std_rounded),
                 const Divider(height: 16),
                 _InfoRow(label: 'Firmware', value: firmware.isNotEmpty ? firmware : '--', icon: Icons.system_update_rounded),
+                const Divider(height: 16),
+                _InfoRow(
+                  label: 'Serial Number', 
+                  value: serialNumber.isNotEmpty ? serialNumber : '--', 
+                  icon: Icons.confirmation_number_rounded,
+                  action: serialNumber.isEmpty && device != null
+                    ? IconButton(
+                        icon: const Icon(Icons.refresh, size: 18),
+                        onPressed: () => RingPlugin.getSerialNumber(),
+                        tooltip: 'Read Serial Number',
+                      )
+                    : null,
+                ),
+                const Divider(height: 16),
+                _RssiIndicator(rssi: rssi),
               ]),
             ),
             const SizedBox(height: 16),
@@ -207,7 +234,8 @@ class ProfileScreen extends ConsumerWidget {
 class _InfoRow extends StatelessWidget {
   final String label, value;
   final IconData icon;
-  const _InfoRow({required this.label, required this.value, required this.icon});
+  final Widget? action;
+  const _InfoRow({required this.label, required this.value, required this.icon, this.action});
 
   @override
   Widget build(BuildContext context) {
@@ -216,8 +244,88 @@ class _InfoRow extends StatelessWidget {
       const SizedBox(width: 10),
       Text(label, style: Theme.of(context).textTheme.bodyMedium),
       const Spacer(),
+      if (action != null) ...[
+        action!,
+        const SizedBox(width: 8),
+      ],
       Text(value, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
     ]);
+  }
+}
+
+class _RssiIndicator extends StatelessWidget {
+  final int rssi;
+  
+  const _RssiIndicator({required this.rssi});
+  
+  @override
+  Widget build(BuildContext context) {
+    final signalStrength = _getSignalStrength(rssi);
+    final color = _getSignalColor(rssi);
+    final bars = _getSignalBars(rssi);
+    
+    return Row(
+      children: [
+        Icon(
+          Icons.signal_cellular_alt_rounded,
+          size: 18,
+          color: rssi != 0 ? color : AppColors.textSecondaryDark,
+        ),
+        const SizedBox(width: 10),
+        Text(
+          'Signal Strength',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const Spacer(),
+        // Signal bars
+        Row(
+          children: List.generate(4, (index) {
+            return Container(
+              width: 4,
+              height: 8 + index * 3.0,
+              margin: const EdgeInsets.only(left: 2),
+              decoration: BoxDecoration(
+                color: index < bars ? color : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          rssi != 0 ? '$rssi dBm ($signalStrength)' : '--',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: rssi != 0 ? color : null,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  String _getSignalStrength(int rssi) {
+    if (rssi == 0) return 'Unknown';
+    if (rssi >= -50) return 'Excellent';
+    if (rssi >= -60) return 'Good';
+    if (rssi >= -70) return 'Fair';
+    if (rssi >= -80) return 'Weak';
+    return 'Poor';
+  }
+  
+  Color _getSignalColor(int rssi) {
+    if (rssi == 0) return Colors.grey;
+    if (rssi >= -60) return Colors.green;
+    if (rssi >= -70) return Colors.orange;
+    return Colors.red;
+  }
+  
+  int _getSignalBars(int rssi) {
+    if (rssi == 0) return 0;
+    if (rssi >= -50) return 4;
+    if (rssi >= -60) return 3;
+    if (rssi >= -70) return 2;
+    if (rssi >= -80) return 1;
+    return 0;
   }
 }
 

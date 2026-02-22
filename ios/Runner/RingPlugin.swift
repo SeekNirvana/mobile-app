@@ -93,6 +93,8 @@ import BCLRingSDK
             getSteps(result: result)
         case "clearSteps":
             clearSteps(result: result)
+        case "getSerialNumber":
+            getSerialNumber(result: result)
             
         // MARK: - Heart Rate
         case "startHeartRate":
@@ -523,6 +525,18 @@ import BCLRingSDK
                     result(FlutterError(code: "CLEAR_STEPS_ERROR", message: error.localizedDescription, details: nil))
                 }
             }
+        }
+    }
+    
+    private func getSerialNumber(result: @escaping FlutterResult) {
+        // For iOS, serial number is typically available from the composite command
+        // If we have it in capabilities, return it
+        if let sn = deviceCapabilities["serialNumber"] as? String, !sn.isEmpty {
+            sendHealthData(type: "serialNumber", data: ["sn": sn])
+            result(nil)
+        } else {
+            // Try to read from device if available
+            result(FlutterError(code: "NOT_AVAILABLE", message: "Serial number not available", details: nil))
         }
     }
     

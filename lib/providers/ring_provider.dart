@@ -68,6 +68,14 @@ final firmwareVersionProvider = StateProvider<String>((ref) {
   return '';
 });
 
+final serialNumberProvider = StateProvider<String>((ref) {
+  return '';
+});
+
+final rssiProvider = StateProvider<int>((ref) {
+  return 0;
+});
+
 final heartRateMeasuringProvider = StateProvider<bool>((ref) => false);
 final spo2MeasuringProvider = StateProvider<bool>((ref) => false);
 
