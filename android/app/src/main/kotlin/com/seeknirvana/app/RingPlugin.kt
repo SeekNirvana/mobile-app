@@ -257,8 +257,38 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(null)
             }
             "getSerialNumber" -> {
-                Log.w(TAG, "Serial number not available in Android SDK v1.0.44")
-                result.error("NOT_SUPPORTED", "Serial number not available in this SDK version", null)
+                Log.d(TAG, "MethodChannel: getSerialNumber called (trying LmAPILite)")
+                try {
+                    // Try to use LmAPILite if available
+                    val liteClass = Class.forName("com.lm.sdk.LmAPILite")
+                    val getSnMethod = liteClass.getMethod("GET_SN", Class.forName("com.lm.sdk.inter.ISNListener"))
+                    
+                    // Create anonymous listener using reflection
+                    val listenerProxy = java.lang.reflect.Proxy.newProxyInstance(
+                        context!!.classLoader,
+                        arrayOf(Class.forName("com.lm.sdk.inter.ISNListener"))
+                    ) { _, method, args ->
+                        when (method.name) {
+                            "getSn" -> {
+                                val sn = args?.get(0) as? String
+                                Log.d(TAG, "Serial Number received via LmAPILite: $sn")
+                                sendHealthData("serialNumber", mapOf("sn" to (sn ?: "")))
+                                null
+                            }
+                            "setSn" -> null
+                            else -> null
+                        }
+                    }
+                    
+                    getSnMethod.invoke(null, listenerProxy)
+                    result.success(null)
+                } catch (e: ClassNotFoundException) {
+                    Log.w(TAG, "LmAPILite not available in this SDK version")
+                    result.error("NOT_SUPPORTED", "Serial number not available in SDK v1.0.44", null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading serial number", e)
+                    result.error("ERROR", e.message, null)
+                }
             }
             "getVersion" -> {
                 Log.d(TAG, "MethodChannel: getVersion called")
