@@ -125,47 +125,16 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            // Ring Busy Indicator
-            if (_isRingBusy)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                color: Colors.orange.shade100,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.info_outline, color: Colors.orange.shade800, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Ring is measuring... Please wait before starting another measurement.',
-                        style: TextStyle(color: Colors.orange.shade800, fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: _buildContent(context, hr, spo2, temperature, systolic, diastolic, hrHistory),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContent(BuildContext context, int hr, int spo2, double temperature, int systolic, int diastolic, List<double> hrHistory) {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Vitals',
+                    Text(
+                      'Vitals',
                       style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -228,17 +197,12 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
               ),
             ),
 
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContent(BuildContext context, int hr, int spo2, double temperature, int systolic, int diastolic, List<double> hrHistory) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return CustomScrollView(
-      slivers: [
+            // Temperature & Blood Pressure Row (conditional)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: Row(
+                  children: [
                     Expanded(
                       child: _VitalCard(
                         title: 'Temperature',
@@ -283,14 +247,10 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
   }
 
   void _toggleHeartRate() async {
-    if (_isRingBusy) {
-      _showBusyIndicator();
-      return;
-    }
     final isMeasuring = ref.read(heartRateMeasuringProvider);
     if (isMeasuring) {
       _cancelSafetyTimeout('hr');
-      await RingPlugin.stopHeartRate();
+      RingPlugin.stopHeartRate();
       ref.read(heartRateMeasuringProvider.notifier).state = false;
     } else {
       try {
@@ -304,14 +264,10 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
   }
 
   void _toggleSpO2() async {
-    if (_isRingBusy) {
-      _showBusyIndicator();
-      return;
-    }
     final isMeasuring = ref.read(spo2MeasuringProvider);
     if (isMeasuring) {
       _cancelSafetyTimeout('spo2');
-      await RingPlugin.stopSpO2();
+      RingPlugin.stopSpO2();
       ref.read(spo2MeasuringProvider.notifier).state = false;
     } else {
       try {
@@ -325,10 +281,6 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
   }
 
   void _startTemperature() async {
-    if (_isRingBusy) {
-      _showBusyIndicator();
-      return;
-    }
     if (!ref.read(temperatureMeasuringProvider)) {
       try {
         _startSafetyTimeout('temp');
