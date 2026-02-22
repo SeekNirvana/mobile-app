@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/ring_provider.dart';
@@ -7,7 +8,6 @@ import '../../providers/theme_provider.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
 import '../../plugins/ring_sdk/models/ring_connection_state.dart';
 import '../../services/feature_detection_service.dart';
-import 'capabilities_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -104,31 +104,11 @@ class ProfileScreen extends ConsumerWidget {
                 _InfoRow(label: 'Firmware', value: firmware.isNotEmpty ? firmware : '--', icon: Icons.system_update_rounded),
                 const Divider(height: 16),
                 _InfoRow(
-                  label: 'Serial Number', 
-                  value: serialNumber.isNotEmpty ? serialNumber : '--', 
-                  icon: Icons.confirmation_number_rounded,
-                  action: serialNumber.isEmpty && device != null
-                    ? IconButton(
-                        icon: const Icon(Icons.refresh, size: 18),
-                        onPressed: () => RingPlugin.getSerialNumber(),
-                        tooltip: 'Read Serial Number',
-                      )
-                    : null,
-                ),
-                const Divider(height: 16),
-                _RssiIndicator(rssi: rssi),
-                const Divider(height: 16),
-                _InfoRow(
                   label: 'Capabilities', 
                   value: 'View All',
                   icon: Icons.list_alt,
                   action: TextButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const CapabilitiesScreen(),
-                      ),
-                    ),
+                    onPressed: () => context.push('/capabilities'),
                     icon: const Icon(Icons.arrow_forward, size: 16),
                     label: const Text('View'),
                     style: TextButton.styleFrom(

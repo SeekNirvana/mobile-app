@@ -7,8 +7,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/health_provider.dart';
 import '../../providers/ring_provider.dart';
+
 import '../../plugins/ring_sdk/ring_plugin.dart';
-import '../../services/feature_detection_service.dart';
 
 class VitalsScreen extends ConsumerStatefulWidget {
   const VitalsScreen({super.key});
@@ -26,22 +26,6 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
   
   static const _safetyTimeout = Duration(seconds: 30);
   static const _bpSafetyTimeout = Duration(seconds: 60);
-  
-  // Track if ring is busy
-  bool _isRingBusy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Listen to RingPlugin's measurement state
-    RingPlugin.measurementState.listen((isMeasuring) {
-      if (mounted) {
-        setState(() {
-          _isRingBusy = isMeasuring;
-        });
-      }
-    });
-  }
 
   @override
   void dispose() {
@@ -197,7 +181,7 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
               ),
             ),
 
-            // Temperature & Blood Pressure Row (conditional)
+            // Temperature & Blood Pressure Row
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -216,26 +200,23 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
                         isMeasuring: ref.watch(temperatureMeasuringProvider),
                       ),
                     ),
-                    // Show BP only if supported by ring
-                    if (FeatureDetectionService.supportsBloodPressure) ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _VitalCard(
-                          title: 'Blood Pressure',
-                          value: systolic > 0 && diastolic > 0 ? '$systolic/$diastolic' : '--/--',
-                          unit: 'mmHg',
-                          icon: Icons.speed_rounded,
-                          iconColor: AppColors.bloodPressure,
-                          status: systolic > 0 ? _getBPCategory(systolic, diastolic) : 'PPG-based',
-                          isActive: systolic > 0,
-                          onMeasure: _toggleBloodPressure,
-                          isMeasuring: ref.watch(bpMeasuringProvider),
-                          child: ref.watch(bpMeasuringProvider) && ref.watch(ppgWaveformProvider).isNotEmpty
-                              ? _WaveformPreview(data: ref.watch(ppgWaveformProvider), color: AppColors.bloodPressure)
-                              : null,
-                        ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _VitalCard(
+                        title: 'Blood Pressure',
+                        value: systolic > 0 && diastolic > 0 ? '$systolic/$diastolic' : '--/--',
+                        unit: 'mmHg',
+                        icon: Icons.speed_rounded,
+                        iconColor: AppColors.bloodPressure,
+                        status: systolic > 0 ? _getBPCategory(systolic, diastolic) : 'PPG-based',
+                        isActive: systolic > 0,
+                        onMeasure: _toggleBloodPressure,
+                        isMeasuring: ref.watch(bpMeasuringProvider),
+                        child: ref.watch(bpMeasuringProvider) && ref.watch(ppgWaveformProvider).isNotEmpty
+                            ? _WaveformPreview(data: ref.watch(ppgWaveformProvider), color: AppColors.bloodPressure)
+                            : null,
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -246,120 +227,53 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
     );
   }
 
-  void _toggleHeartRate() async {
+  void _toggleHeartRate() {
     final isMeasuring = ref.read(heartRateMeasuringProvider);
     if (isMeasuring) {
       _cancelSafetyTimeout('hr');
       RingPlugin.stopHeartRate();
       ref.read(heartRateMeasuringProvider.notifier).state = false;
     } else {
-      try {
-        _startSafetyTimeout('hr');
-        await RingPlugin.startHeartRate();
-        ref.read(heartRateMeasuringProvider.notifier).state = true;
-      } on RingBusyException catch (e) {
-        _showBusyError(e.toString());
-      }
+      _startSafetyTimeout('hr');
+      RingPlugin.startHeartRate();
+      ref.read(heartRateMeasuringProvider.notifier).state = true;
     }
   }
 
-  void _toggleSpO2() async {
+  void _toggleSpO2() {
     final isMeasuring = ref.read(spo2MeasuringProvider);
-    
-    // Check if ring is busy with another measurement
-    if (!isMeasuring && _isRingBusy) {
-      _showBusySnackBar();
-      return;
-    }
-    
     if (isMeasuring) {
       _cancelSafetyTimeout('spo2');
-      await RingPlugin.stopSpO2();
+      RingPlugin.stopSpO2();
       ref.read(spo2MeasuringProvider.notifier).state = false;
     } else {
-      try {
-        _startSafetyTimeout('spo2');
-        await RingPlugin.startSpO2();
-        ref.read(spo2MeasuringProvider.notifier).state = true;
-      } on RingBusyException catch (e) {
-        _showBusyError(e.toString());
-      }
+      _startSafetyTimeout('spo2');
+      RingPlugin.startSpO2();
+      ref.read(spo2MeasuringProvider.notifier).state = true;
     }
   }
 
-  void _startTemperature() async {
-    // Check if ring is busy
-    if (_isRingBusy) {
-      _showBusySnackBar();
-      return;
-    }
-    
+  void _startTemperature() {
     if (!ref.read(temperatureMeasuringProvider)) {
-      try {
-        _startSafetyTimeout('temp');
-        await RingPlugin.startTemperature();
-        ref.read(temperatureMeasuringProvider.notifier).state = true;
-      } on RingBusyException catch (e) {
-        _showBusyError(e.toString());
-      }
+      _startSafetyTimeout('temp');
+      ref.read(temperatureMeasuringProvider.notifier).state = true;
+      RingPlugin.startTemperature();
     }
   }
 
-  void _toggleBloodPressure() async {
+  void _toggleBloodPressure() {
     final isMeasuring = ref.read(bpMeasuringProvider);
     if (isMeasuring) {
       _cancelSafetyTimeout('bp');
       RingPlugin.stopBloodPressure();
       ref.read(bpMeasuringProvider.notifier).state = false;
     } else {
-      try {
-        _startSafetyTimeout('bp');
-        ref.read(bpMeasuringProvider.notifier).state = true;
-        ref.read(bpProgressValueProvider.notifier).state = 0;
-        ref.read(ppgWaveformProvider.notifier).state = [];
-        await RingPlugin.startBloodPressure();
-      } on RingBusyException catch (e) {
-        _showBusyError(e.toString());
-      }
+      _startSafetyTimeout('bp');
+      ref.read(bpMeasuringProvider.notifier).state = true;
+      ref.read(bpProgressValueProvider.notifier).state = 0;
+      ref.read(ppgWaveformProvider.notifier).state = [];
+      RingPlugin.startBloodPressure();
     }
-  }
-  
-  void _showBusySnackBar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            SizedBox(
-              width: 16, 
-              height: 16, 
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-            ),
-            SizedBox(width: 12),
-            Text('Ring is busy measuring. Please wait...'),
-          ],
-        ),
-        backgroundColor: Colors.orange.shade700,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _showBusyError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.orange,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {},
-        ),
-      ),
-    );
   }
 
   String _getHRZone(int bpm) {

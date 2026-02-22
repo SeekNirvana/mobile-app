@@ -22,10 +22,6 @@ import BCLRingSDK
     private var isBloodPressureMeasuring = false
     private var rssiTimer: Timer?
     
-    // Device capabilities (from composite command)
-    private var deviceCapabilities: [String: Any] = [:]
-    private var isHistorySyncing = false
-    
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = RingPlugin()
         instance.setupChannels(registrar: registrar)
@@ -395,8 +391,6 @@ import BCLRingSDK
         stopReadRSSI(result: { _ in })
         BCLRingManager.shared.disconnect()
         connectedDevice = nil
-        deviceCapabilities.removeAll()
-        isHistorySyncing = false
         sendConnectionState("disconnected")
         result(nil)
     }
@@ -455,6 +449,13 @@ import BCLRingSDK
                 }
             }
         }
+    }
+    
+    private func getSerialNumber(result: @escaping FlutterResult) {
+        // iOS SDK doesn't have direct serial number read, use device identifier
+        // or return empty and let the composite command provide it
+        sendHealthData(type: "serialNumber", data: ["sn": ""])
+        result(nil)
     }
     
     private func getVersion(result: @escaping FlutterResult) {
@@ -528,18 +529,6 @@ import BCLRingSDK
         }
     }
     
-    private func getSerialNumber(result: @escaping FlutterResult) {
-        // For iOS, serial number is typically available from the composite command
-        // If we have it in capabilities, return it
-        if let sn = deviceCapabilities["serialNumber"] as? String, !sn.isEmpty {
-            sendHealthData(type: "serialNumber", data: ["sn": sn])
-            result(nil)
-        } else {
-            // Try to read from device if available
-            result(FlutterError(code: "NOT_AVAILABLE", message: "Serial number not available", details: nil))
-        }
-    }
-    
     // MARK: - Heart Rate
     
     private func startHeartRate(result: @escaping FlutterResult) {
@@ -583,12 +572,17 @@ import BCLRingSDK
             progressConfig: 1,
             intervalConfig: 0,
             callbacks: callbacks
-        ) { hrResult in
+        ) { [weak self] hrResult in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isHeartRateMeasuring = false
+                
                 switch hrResult {
                 case .success:
+                    self.sendHealthData(type: "heartRateComplete", data: [:])
                     result(nil)
                 case .failure(let error):
+                    self.sendHealthData(type: "heartRateError", data: ["message": error.localizedDescription])
                     result(FlutterError(code: "HR_ERROR", message: error.localizedDescription, details: nil))
                 }
             }
@@ -611,38 +605,80 @@ import BCLRingSDK
     
     // MARK: - SpO2
     
+    private var spo2Callbacks: BCLBloodOxygenCallbacks?
+    private var lastSpO2Value: Int = 0
+    private var lastSpO2HR: Int = 0
+    private var lastSpO2Temp: Int = 0
+    
     private func startSpO2(result: @escaping FlutterResult) {
         isSpO2Measuring = true
+        lastSpO2Value = 0
+        lastSpO2HR = 0
+        lastSpO2Temp = 0
+        
+        // Use callbacks to capture live data during measurement (like Android)
+        let callbacks = BCLBloodOxygenCallbacks(
+            onProgress: { [weak self] progress in
+                self?.sendHealthData(type: "spo2Progress", data: ["progress": progress])
+            },
+            onStatusChanged: { status in
+                print("SpO2 status: \(status)")
+            },
+            onMeasureValue: { [weak self] spo2, hr, temp in
+                guard let self = self else { return }
+                // Capture live values - only update if valid
+                if let spo2Val = spo2, spo2Val > 0 {
+                    self.lastSpO2Value = spo2Val
+                    self.lastSpO2HR = hr ?? self.lastSpO2HR
+                    self.lastSpO2Temp = temp ?? self.lastSpO2Temp
+                    // Send live data to Flutter (like Android's resultData)
+                    self.sendHealthData(type: "spo2", data: [
+                        "spo2": spo2Val,
+                        "heartRate": hr ?? self.lastSpO2HR,
+                        "temperature": temp ?? self.lastSpO2Temp
+                    ])
+                }
+            },
+            onPerfusionRate: { [weak self] rate in
+                // Optional perfusion data
+            },
+            onBloodPressure: { _, _ in },
+            onWaveform: { [weak self] seq, number, waveData in
+                // Send waveform data for live display (like Android)
+                let csvData = waveData.map { "\($0.0),\($0.1),\($0.2),\($0.3),\($0.4)" }.joined(separator: ";")
+                self?.sendHealthData(type: "spo2Waveform", data: ["data": csvData])
+            },
+            onError: { [weak self] error in
+                self?.sendHealthData(type: "spo2Error", data: ["message": error.localizedDescription])
+            }
+        )
+        
+        spo2Callbacks = callbacks
+        BCLBloodOxygenResponse.setCallbacks(callbacks)
         
         BCLRingManager.shared.startBloodOxygen(
             collectTime: 30,
             collectFrequency: 0x30,
             waveformConfig: 1,
             progressConfig: 1
-        ) { [weak self] spo2Result in
+        ) { [weak self] _ in
+            // Completion handler - just send complete event (data already sent via callbacks)
             DispatchQueue.main.async {
-                switch spo2Result {
-                case .success(let response):
-                    self?.sendHealthData(type: "spo2", data: [
-                        "spo2": response.bloodOxygen ?? 0,
-                        "heartRate": response.heartRate ?? 0,
-                        "temperature": response.temperature ?? 0
-                    ])
-                    self?.sendHealthData(type: "spo2Progress", data: ["progress": 100])
-                    self?.sendHealthData(type: "spo2Complete", data: [:])
-                    result(nil)
-                case .failure(let error):
-                    self?.sendHealthData(type: "spo2Error", data: ["message": error.localizedDescription])
-                    result(FlutterError(code: "SPO2_ERROR", message: error.localizedDescription, details: nil))
-                }
+                guard let self = self else { return }
+                self.isSpO2Measuring = false
+                self.sendHealthData(type: "spo2Progress", data: ["progress": 100])
+                self.sendHealthData(type: "spo2Complete", data: [:])
+                result(nil)
             }
         }
     }
     
     private func stopSpO2(result: @escaping FlutterResult) {
         isSpO2Measuring = false
-        BCLRingManager.shared.stopBloodOxygen { stopResult in
+        BCLRingManager.shared.stopBloodOxygen { [weak self] stopResult in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.sendHealthData(type: "spo2Complete", data: [:])
                 switch stopResult {
                 case .success:
                     result(nil)
@@ -653,39 +689,112 @@ import BCLRingSDK
         }
     }
     
-    // MARK: - Blood Pressure
+    // MARK: - Blood Pressure (PPG-based Estimation like Android)
+    
+    private var bpCallbacks: BCLHeartRateCallbacks?
+    private var bpHrValues: [Int] = []
+    private var isBpMeasurementActive = false
+    
+    private func estimateBPFromHeartRateData() {
+        if bpHrValues.isEmpty {
+            print("BP Error: No HR data collected")
+            sendHealthData(type: "bpError", data: ["message": "No data collected"])
+            return
+        }
+        
+        let avgHr = Double(bpHrValues.reduce(0, +)) / Double(bpHrValues.count)
+        let hrVariation = calculateStandardDeviation(bpHrValues)
+        
+        var systolic = 110 + Int((avgHr - 70) * 0.5)
+        var diastolic = 70 + Int((avgHr - 70) * 0.3)
+        
+        if hrVariation > 5 {
+            systolic += 5
+            diastolic += 3
+        }
+        
+        // Clamp to realistic ranges
+        systolic = max(90, min(180, systolic))
+        diastolic = max(60, min(110, diastolic))
+        
+        print("BP Estimated: \(systolic)/\(diastolic) from avg HR \(avgHr)")
+        sendHealthData(type: "bpProgress", data: ["progress": 100])
+        sendHealthData(type: "bloodPressure", data: [
+            "systolic": systolic,
+            "diastolic": diastolic,
+            "confidence": 65
+        ])
+    }
+    
+    private func calculateStandardDeviation(_ values: [Int]) -> Double {
+        guard values.count > 1 else { return 0.0 }
+        let avg = Double(values.reduce(0, +)) / Double(values.count)
+        let variance = values.map { pow(Double($0) - avg, 2) }.reduce(0, +) / Double(values.count)
+        return sqrt(variance)
+    }
     
     private func startBloodPressure(result: @escaping FlutterResult) {
         isBloodPressureMeasuring = true
+        isBpMeasurementActive = true
+        bpHrValues.removeAll()
         
         sendHealthData(type: "bpProgress", data: ["progress": 0])
         
-        BCLRingManager.shared.startBloodPressure(
-            collectTime: 25,
-            waveformConfig: 1,
-            progressConfig: 1
-        ) { [weak self] bpResult in
-            DispatchQueue.main.async {
-                switch bpResult {
-                case .success(let response):
-                    self?.sendHealthData(type: "bpProgress", data: ["progress": 100])
-                    self?.sendHealthData(type: "bloodPressure", data: [
-                        "systolic": response.systolicPressure ?? 120,
-                        "diastolic": response.diastolicPressure ?? 80,
-                        "confidence": 75
-                    ])
-                    result(nil)
-                case .failure(let error):
-                    self?.sendHealthData(type: "bpError", data: ["message": error.localizedDescription])
-                    result(FlutterError(code: "BP_ERROR", message: error.localizedDescription, details: nil))
+        // Use Heart Rate measurement for PPG-based BP estimation (like Android)
+        let callbacks = BCLHeartRateCallbacks(
+            onProgress: { [weak self] progress in
+                self?.sendHealthData(type: "bpProgress", data: ["progress": progress])
+            },
+            onStatusChanged: { status in
+                print("BP status: \(status)")
+            },
+            onMeasureValue: { [weak self] heartRate, hrv, stress, temp in
+                guard let self = self, self.isBpMeasurementActive else { return }
+                if let hr = heartRate, hr > 0 {
+                    self.bpHrValues.append(hr)
                 }
+            },
+            onWaveform: { [weak self] seq, number, waveData in
+                // Send waveform for UI display
+                let csvData = waveData.map { "\($0.0),\($0.1),\($0.2),\($0.3)" }.joined(separator: ";")
+                self?.sendHealthData(type: "bpWaveform", data: ["data": csvData])
+            },
+            onRRInterval: { _, _, _ in },
+            onError: { [weak self] error in
+                self?.sendHealthData(type: "bpError", data: ["message": error.localizedDescription])
+            }
+        )
+        
+        bpCallbacks = callbacks
+        BCLHeartRateResponse.setCallbacks(callbacks, frameId: 0)
+        
+        // Start heart rate measurement for 25 seconds (like Android)
+        BCLRingManager.shared.startHeartRate(
+            collectTime: 25,
+            collectFrequency: 0x30,
+            waveformConfig: 1,
+            progressConfig: 1,
+            intervalConfig: 0,
+            callbacks: callbacks
+        ) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                if self.isBpMeasurementActive {
+                    self.isBpMeasurementActive = false
+                    self.isBloodPressureMeasuring = false
+                    self.estimateBPFromHeartRateData()
+                }
+                result(nil)
             }
         }
     }
     
     private func stopBloodPressure(result: @escaping FlutterResult) {
+        isBpMeasurementActive = false
         isBloodPressureMeasuring = false
-        BCLRingManager.shared.stopBloodPressure { stopResult in
+        
+        BCLRingManager.shared.stopHeartRate { stopResult in
             DispatchQueue.main.async {
                 switch stopResult {
                 case .success:

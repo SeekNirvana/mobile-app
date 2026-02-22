@@ -75,6 +75,8 @@ class HomeScreen extends ConsumerWidget {
     final hrv = ref.watch(hrvProvider);
     final stress = ref.watch(stressProvider);
     final sleepDuration = ref.watch(sleepDurationProvider);
+    final systolic = ref.watch(systolicProvider);
+    final diastolic = ref.watch(diastolicProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -133,7 +135,7 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
 
-            // Quick Metrics Grid
+            // Quick Metrics Grid (HRV & Stress on 2nd row)
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               sliver: SliverGrid(
@@ -145,6 +147,7 @@ class HomeScreen extends ConsumerWidget {
                   childAspectRatio: MediaQuery.of(context).size.width > 400 ? 1.3 : 1.1,
                 ),
                 delegate: SliverChildListDelegate([
+                  // Row 1: Heart Rate, SpO2
                   HealthCard(
                     title: 'Heart Rate',
                     value: hr > 0 ? '$hr' : '--',
@@ -163,6 +166,26 @@ class HomeScreen extends ConsumerWidget {
                     color: AppColors.spo2,
                     onTap: () => context.go('/vitals'),
                   ),
+                  // Row 2: HRV, Stress
+                  HealthCard(
+                    title: 'HRV',
+                    value: hrv > 0 ? '$hrv' : '--',
+                    unit: 'ms',
+                    subtitle: hrv > 0 ? (hrv >= 50 ? 'Good' : 'Low') : 'Not measured',
+                    icon: Icons.timeline_rounded,
+                    color: AppColors.hrv,
+                    onTap: () => context.go('/vitals'),
+                  ),
+                  HealthCard(
+                    title: 'Stress',
+                    value: stress > 0 ? '$stress' : '--',
+                    unit: '',
+                    subtitle: stress > 0 ? (stress <= 30 ? 'Relaxed' : stress <= 60 ? 'Normal' : 'Stressed') : 'Not measured',
+                    icon: Icons.psychology_rounded,
+                    color: AppColors.stress,
+                    onTap: () => context.go('/vitals'),
+                  ),
+                  // Row 3: Steps, Temperature
                   HealthCard(
                     title: 'Steps',
                     value: steps > 0 ? _formatSteps(steps) : '--',
@@ -179,14 +202,7 @@ class HomeScreen extends ConsumerWidget {
                     color: AppColors.temperature,
                     onTap: () => context.go('/vitals'),
                   ),
-                  HealthCard(
-                    title: 'HRV',
-                    value: hrv > 0 ? '$hrv' : '--',
-                    unit: 'ms',
-                    subtitle: hrv > 0 ? (hrv >= 50 ? 'Good' : 'Low') : 'Not measured',
-                    icon: Icons.timeline_rounded,
-                    color: AppColors.hrv,
-                  ),
+                  // Row 4: Sleep, BP
                   HealthCard(
                     title: 'Sleep',
                     value: sleepDuration > 0 ? sleepDuration.toStringAsFixed(1) : '--',
@@ -197,12 +213,12 @@ class HomeScreen extends ConsumerWidget {
                     onTap: () => context.go('/sleep'),
                   ),
                   HealthCard(
-                    title: 'Stress',
-                    value: stress > 0 ? '$stress' : '--',
-                    unit: '',
-                    subtitle: stress > 0 ? (stress <= 30 ? 'Relaxed' : stress <= 60 ? 'Normal' : 'Stressed') : 'Not measured',
-                    icon: Icons.psychology_rounded,
-                    color: AppColors.stress,
+                    title: 'BP',
+                    value: systolic > 0 && diastolic > 0 ? '$systolic/$diastolic' : '--',
+                    unit: systolic > 0 ? 'mmHg' : '',
+                    subtitle: systolic > 0 ? 'Last measured' : 'Go to Vitals',
+                    icon: Icons.speed_rounded,
+                    color: AppColors.bloodPressure,
                     onTap: () => context.go('/vitals'),
                   ),
                 ]),
@@ -328,5 +344,154 @@ class _HealthScoreCard extends StatelessWidget {
     if (score >= 60) return 'Good';
     if (score >= 40) return 'Fair';
     return 'Needs Attention';
+  }
+}
+
+/// Compact row widget for HRV and Stress side by side
+class _HrvStressRow extends StatelessWidget {
+  final int hrv;
+  final int stress;
+  final VoidCallback? onTap;
+
+  const _HrvStressRow({
+    required this.hrv,
+    required this.stress,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 72, // Shorter row height
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // HRV Section
+            Expanded(
+              child: _buildMetricItem(
+                icon: Icons.timeline_rounded,
+                iconColor: AppColors.hrv,
+                label: 'HRV',
+                value: hrv > 0 ? '$hrv' : '--',
+                unit: 'ms',
+                status: hrv > 0 ? (hrv >= 50 ? 'Good' : 'Low') : 'Not measured',
+                isDark: isDark,
+              ),
+            ),
+            // Divider
+            VerticalDivider(
+              width: 32,
+              thickness: 1,
+              indent: 8,
+              endIndent: 8,
+              color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
+            ),
+            // Stress Section
+            Expanded(
+              child: _buildMetricItem(
+                icon: Icons.psychology_rounded,
+                iconColor: AppColors.stress,
+                label: 'Stress',
+                value: stress > 0 ? '$stress' : '--',
+                unit: '',
+                status: stress > 0
+                    ? (stress <= 30 ? 'Relaxed' : stress <= 60 ? 'Normal' : 'Stressed')
+                    : 'Not measured',
+                isDark: isDark,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricItem({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required String unit,
+    required String status,
+    required bool isDark,
+  }) {
+    return Row(
+      children: [
+        // Icon
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: iconColor, size: 22),
+        ),
+        const SizedBox(width: 12),
+        // Value and label
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Label
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                ),
+              ),
+              const SizedBox(height: 2),
+              // Value with unit
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  if (unit.isNotEmpty) ...[
+                    const SizedBox(width: 2),
+                    Text(
+                      unit,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: iconColor,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

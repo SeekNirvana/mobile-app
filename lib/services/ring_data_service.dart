@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../plugins/ring_sdk/ring_plugin.dart';
 import '../providers/ring_provider.dart';
 import '../providers/health_provider.dart';
 import 'sleep_log_service.dart';
-import 'feature_detection_service.dart';
 
 /// Global service that listens to RingPlugin.rawHealthData and dispatches
 /// events to the correct Riverpod providers. Runs as long as the app is alive.
@@ -19,9 +17,6 @@ class RingDataService {
   }
 
   void _init() {
-    // Initialize RingPlugin for state tracking
-    RingPlugin.initialize();
-    
     _healthSub = RingPlugin.rawHealthData.listen((data) {
       final type = data['type'] as String?;
       if (type == null) return;
@@ -91,42 +86,6 @@ class RingDataService {
 
         case 'ecg':
           // ECG not supported by ring hardware — silently ignore
-          break;
-          
-        case 'capabilities':
-          // Handle capability flags from composite command (iOS)
-          debugPrint('[RingDataService] Received capability flags');
-          FeatureDetectionService.updateCapabilities(data);
-          break;
-          
-        case 'connected':
-          // Set platform-specific capabilities
-          // Android has PPG-based BP estimation even without native SDK support
-          if (Platform.isAndroid) {
-            debugPrint('[RingDataService] Setting Android PPG BP capability');
-            FeatureDetectionService.setPlatformCapabilities(ppgBloodPressure: true);
-          }
-          break;
-          
-        case 'serialNumber':
-          final sn = data['sn'] as String?;
-          if (sn != null && sn.isNotEmpty) {
-            debugPrint('[RingDataService] Serial Number: $sn');
-            ref.read(serialNumberProvider.notifier).state = sn;
-          }
-          break;
-          
-        case 'rssi':
-          final rssi = data['rssi'] as int?;
-          if (rssi != null) {
-            ref.read(rssiProvider.notifier).state = rssi;
-          }
-          break;
-          
-        case 'historyStatus':
-          // Handle history sync status updates
-          final status = data['status'] as String?;
-          debugPrint('[RingDataService] History status: $status');
           break;
 
         case 'bloodPressure':
@@ -200,11 +159,6 @@ class RingDataService {
             debugPrint('[RingDataService] Temperature: $normalizedTemp°C (raw: $temp)');
           }
           break;
-          
-        case 'temperatureError':
-          debugPrint('[RingDataService] Temperature Error: ${data['code']}');
-          ref.read(temperatureMeasuringProvider.notifier).state = false;
-          break;
 
         case 'temperatureTesting':
           final temp = data['temperature'] as int?;
@@ -224,6 +178,13 @@ class RingDataService {
         case 'temperatureError':
           debugPrint('[RingDataService] Temperature Error: ${data['code']}');
           ref.read(temperatureMeasuringProvider.notifier).state = false;
+          break;
+
+        case 'rssi':
+          final rssiValue = data['rssi'] as int?;
+          if (rssiValue != null) {
+            ref.read(rssiProvider.notifier).state = rssiValue;
+          }
           break;
 
         case 'historyStart':
@@ -249,11 +210,6 @@ class RingDataService {
         case 'historyComplete':
           final allRecords = ref.read(historyDataProvider);
           debugPrint('[RingDataService] History sync complete, total records: ${allRecords.length}');
-          
-          // Request capabilities if not already received (Android fallback)
-          if (!FeatureDetectionService.hasCapabilities) {
-            debugPrint('[RingDataService] Capabilities not detected, using defaults');
-          }
           
           // Process and store sleep data by date (async, don't block)
           sleepLogService.processNewRecords(allRecords).then((_) {

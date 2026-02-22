@@ -13,6 +13,7 @@ class AppScaffold extends StatelessWidget {
     if (location.startsWith('/sleep')) return 1; // Sleep shows Vitals as selected
     if (location.startsWith('/activities')) return 2;
     if (location.startsWith('/profile')) return 3;
+    if (location.startsWith('/capabilities')) return 3; // Capabilities shows Profile as selected
     return 0;
   }
 

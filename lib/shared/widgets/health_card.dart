@@ -33,9 +33,9 @@ class HealthCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        // Remove fixed height to allow flexible sizing
+        // Shorter height for more compact cards
         constraints: BoxConstraints(
-          minHeight: isLarge ? 140 : 100,
+          minHeight: isLarge ? 120 : 85,
         ),
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -107,7 +107,9 @@ class HealthCard extends StatelessWidget {
                         const SizedBox(width: 10),
                         Text(
                           title,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                             color: isDark
                                 ? AppColors.textSecondaryDark
                                 : AppColors.textSecondaryLight,
@@ -125,17 +127,20 @@ class HealthCard extends StatelessWidget {
                         children: [
                           Text(
                             value,
-                            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                               color: color,
                               fontWeight: FontWeight.w700,
+                              fontSize: 28,
                             ),
                           ),
                           if (unit != null) ...[
                             const SizedBox(width: 4),
                             Text(
                               unit!,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: color.withValues(alpha: 0.7),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: color.withValues(alpha: 0.8),
                               ),
                             ),
                           ],
@@ -146,7 +151,9 @@ class HealthCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         subtitle!,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
                           color: isDark
                               ? AppColors.textSecondaryDark
                               : AppColors.textSecondaryLight,
