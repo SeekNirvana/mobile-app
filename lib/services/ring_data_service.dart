@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../plugins/ring_sdk/ring_plugin.dart';
@@ -104,6 +105,15 @@ class RingDataService {
           // Handle capability flags from composite command (iOS)
           debugPrint('[RingDataService] Received capability flags');
           FeatureDetectionService.updateCapabilities(data);
+          break;
+          
+        case 'connected':
+          // Set platform-specific capabilities
+          // Android has PPG-based BP estimation even without native SDK support
+          if (Platform.isAndroid) {
+            debugPrint('[RingDataService] Setting Android PPG BP capability');
+            FeatureDetectionService.setPlatformCapabilities(ppgBloodPressure: true);
+          }
           break;
           
         case 'serialNumber':

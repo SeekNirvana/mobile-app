@@ -7,6 +7,7 @@ import '../../providers/theme_provider.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
 import '../../plugins/ring_sdk/models/ring_connection_state.dart';
 import '../../services/feature_detection_service.dart';
+import 'capabilities_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -116,6 +117,27 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 const Divider(height: 16),
                 _RssiIndicator(rssi: rssi),
+                const Divider(height: 16),
+                _InfoRow(
+                  label: 'Capabilities', 
+                  value: 'View All',
+                  icon: Icons.list_alt,
+                  action: TextButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CapabilitiesScreen(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.arrow_forward, size: 16),
+                    label: const Text('View'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ),
               ]),
             ),
             const SizedBox(height: 16),

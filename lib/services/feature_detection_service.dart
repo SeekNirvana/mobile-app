@@ -42,6 +42,14 @@ class FeatureDetectionService {
     }
   }
   
+  /// Platform-specific capabilities (set manually for features not in SDK)
+  static void setPlatformCapabilities({
+    bool ppgBloodPressure = false,
+  }) {
+    _capabilities['ppgBloodPressureSupported'] = ppgBloodPressure;
+    _notifyListeners();
+  }
+  
   /// Update capabilities from native SDK (called from RingDataService)
   static void updateCapabilities(Map<String, dynamic> flags) {
     _capabilities.clear();
@@ -145,7 +153,12 @@ class FeatureDetectionService {
   
   // MARK: - Health Features
   
-  static bool get supportsBloodPressure => _capabilities['bloodPressureSupported'] ?? false;
+  static bool get supportsBloodPressure => 
+    (_capabilities['bloodPressureSupported'] ?? false) || 
+    (_capabilities['ppgBloodPressureSupported'] ?? false);
+  
+  static bool get supportsNativeBloodPressure => _capabilities['bloodPressureSupported'] ?? false;
+  static bool get supportsPPGBloodPressure => _capabilities['ppgBloodPressureSupported'] ?? false;
   static bool get supportsBloodGlucose => _capabilities['bloodGlucoseSupported'] ?? false;
   static bool get supportsECG => _capabilities['ecgSupported'] ?? false;
   static bool get supportsVibration => _capabilities['vibrationSupported'] ?? false;
