@@ -5,6 +5,7 @@ import '../../core/constants/app_constants.dart';
 import '../../providers/ring_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
+import '../../services/feature_detection_service.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -92,6 +93,83 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
+            // Extended Features (HID, etc.)
+            if (FeatureDetectionService.hasExtendedFeatures)
+              Container(
+                padding: const EdgeInsets.all(20),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.cardDark : Colors.white,
+                  borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+                  border: Border.all(color: isDark ? AppColors.cardBorderDark : AppColors.cardBorderLight),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Ring Features', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    
+                    // HID Settings (if supported)
+                    if (FeatureDetectionService.supportsAnyHID) ...[
+                      _SettingTile(
+                        icon: Icons.touch_app_rounded,
+                        label: 'Gesture Control (HID)',
+                        subtitle: '${FeatureDetectionService.supportedTouchFeatures.length + FeatureDetectionService.supportedGestureFeatures.length} features available',
+                        onTap: () => _showHIDSettings(context),
+                      ),
+                      const Divider(height: 24),
+                    ],
+                    
+                    // Vibration/Alarm settings (if supported)
+                    if (FeatureDetectionService.supportsVibration) ...[
+                      _SettingTile(
+                        icon: Icons.vibration_rounded,
+                        label: 'Vibration & Alarms',
+                        subtitle: 'Set custom vibrations',
+                        onTap: () => _showVibrationSettings(context),
+                      ),
+                      const Divider(height: 24),
+                    ],
+                    
+                    // Sport Mode (if supported)
+                    if (FeatureDetectionService.supportsSportMode) ...[
+                      _SettingTile(
+                        icon: Icons.directions_run_rounded,
+                        label: 'Sport Mode',
+                        subtitle: 'Track your workouts',
+                        onTap: () {},
+                      ),
+                      const Divider(height: 24),
+                    ],
+                    
+                    // ECG (if supported)
+                    if (FeatureDetectionService.supportsECG) ...[
+                      _SettingTile(
+                        icon: Icons.monitor_heart_rounded,
+                        label: 'ECG Recording',
+                        subtitle: 'Record electrocardiogram',
+                        onTap: () {},
+                      ),
+                      const Divider(height: 24),
+                    ],
+                    
+                    // Voice Recording (if supported)
+                    if (FeatureDetectionService.supportsVoiceRecording) ...[
+                      _SettingTile(
+                        icon: Icons.mic_rounded,
+                        label: 'Voice Recording',
+                        subtitle: 'Record audio memos',
+                        onTap: () {},
+                      ),
+                      const Divider(height: 24),
+                    ],
+                    
+                    // Show capabilities summary
+                    _CapabilitySummary(),
+                  ],
+                ),
+              ),
+
             // Settings
             Container(
               padding: const EdgeInsets.all(20),
@@ -108,11 +186,11 @@ class ProfileScreen extends ConsumerWidget {
                   }),
                 ]),
                 const Divider(height: 24),
-                _SettingTile(icon: Icons.notifications_rounded, label: 'Notifications', onTap: () {}),
+                _SettingTile(icon: Icons.notifications_rounded, label: 'Notifications', subtitle: null, onTap: () {}),
                 const Divider(height: 24),
-                _SettingTile(icon: Icons.flag_rounded, label: 'Step Goal', onTap: () {}),
+                _SettingTile(icon: Icons.flag_rounded, label: 'Step Goal', subtitle: null, onTap: () {}),
                 const Divider(height: 24),
-                _SettingTile(icon: Icons.info_outline_rounded, label: 'About', onTap: () {}),
+                _SettingTile(icon: Icons.info_outline_rounded, label: 'About', subtitle: null, onTap: () {}),
               ]),
             ),
             const SizedBox(height: 24),
@@ -146,16 +224,354 @@ class _InfoRow extends StatelessWidget {
 class _SettingTile extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String? subtitle;
   final VoidCallback onTap;
-  const _SettingTile({required this.icon, required this.label, required this.onTap});
+  const _SettingTile({required this.icon, required this.label, this.subtitle, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(onTap: onTap, child: Row(children: [
-      Icon(icon, size: 20),
-      const SizedBox(width: 12),
-      Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyMedium)),
-      Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Theme.of(context).textTheme.bodySmall?.color),
-    ]));
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.bodyMedium),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Theme.of(context).textTheme.bodySmall?.color),
+        ],
+      ),
+    );
+  }
+}
+
+class _CapabilitySummary extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final summary = FeatureDetectionService.supportedFeaturesSummary;
+    if (summary.isEmpty) return const SizedBox.shrink();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 24),
+        Text(
+          'Supported Features:',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...summary.entries.map((entry) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${entry.key}: ',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    entry.value.join(', '),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+// Extension methods for ProfileScreen
+extension on ProfileScreen {
+  void _showHIDSettings(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const HIDSettingsSheet(),
+    );
+  }
+  
+  void _showVibrationSettings(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const VibrationSettingsSheet(),
+    );
+  }
+}
+
+// HID Settings Sheet
+class HIDSettingsSheet extends ConsumerWidget {
+  const HIDSettingsSheet({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Gesture Control (HID)',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Configure your ring to control your device with gestures',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 24),
+          
+          // Touch Mode Settings
+          if (FeatureDetectionService.supportedTouchFeatures.isNotEmpty) ...[
+            Text(
+              'Touch Gestures',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...FeatureDetectionService.supportedTouchFeatures.map((feature) {
+              return _HIDOptionTile(
+                icon: Icons.touch_app,
+                label: feature,
+                onTap: () => _setHIDTouchMode(context, feature),
+              );
+            }),
+            const SizedBox(height: 24),
+          ],
+          
+          // Gesture Mode Settings
+          if (FeatureDetectionService.supportedGestureFeatures.isNotEmpty) ...[
+            Text(
+              'Air Gestures',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...FeatureDetectionService.supportedGestureFeatures.map((feature) {
+              return _HIDOptionTile(
+                icon: Icons.waving_hand,
+                label: feature,
+                onTap: () => _setHIDGestureMode(context, feature),
+              );
+            }),
+          ],
+          
+          const SizedBox(height: 24),
+          
+          // Disable button
+          FilledButton.icon(
+            onPressed: () => _disableHID(context),
+            icon: const Icon(Icons.block),
+            label: const Text('Disable All Gestures'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+              minimumSize: const Size(double.infinity, 48),
+            ),
+          ),
+          
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+  
+  void _setHIDTouchMode(BuildContext context, String mode) async {
+    int touchMode = 0xFF; // Default: disabled
+    switch (mode) {
+      case 'Music':
+        touchMode = 0x01;
+        break;
+      case 'Photo':
+        touchMode = 0x02;
+        break;
+      case 'Video':
+        touchMode = 0x03;
+        break;
+    }
+    
+    try {
+      await RingPlugin.setHIDMode(touchMode: touchMode, gestureMode: 0xFF);
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Touch mode set to: $mode')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to set HID mode: $e')),
+        );
+      }
+    }
+  }
+  
+  void _setHIDGestureMode(BuildContext context, String mode) async {
+    // Map gesture modes to appropriate values
+    int gestureMode = 0xFF;
+    // Implementation depends on specific gesture types
+    
+    try {
+      await RingPlugin.setHIDMode(touchMode: 0xFF, gestureMode: gestureMode);
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gesture mode set to: $mode')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to set HID mode: $e')),
+        );
+      }
+    }
+  }
+  
+  void _disableHID(BuildContext context) async {
+    try {
+      await RingPlugin.setHIDMode(touchMode: 0xFF, gestureMode: 0xFF);
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All gestures disabled')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to disable HID: $e')),
+        );
+      }
+    }
+  }
+}
+
+class _HIDOptionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  
+  const _HIDOptionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(label),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: onTap,
+    );
+  }
+}
+
+// Vibration Settings Sheet
+class VibrationSettingsSheet extends ConsumerWidget {
+  const VibrationSettingsSheet({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Vibration & Alarms',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Quick vibration test
+          ListTile(
+            leading: const Icon(Icons.vibration),
+            title: const Text('Test Vibration'),
+            subtitle: const Text('2 second strong vibration'),
+            onTap: () {
+              RingPlugin.vibrate(seconds: 2);
+            },
+          ),
+          
+          const Divider(),
+          
+          // Alarm settings placeholder
+          ListTile(
+            leading: const Icon(Icons.alarm),
+            title: const Text('Set Alarm'),
+            subtitle: const Text('Coming soon'),
+            enabled: false,
+            onTap: () {},
+          ),
+          
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
   }
 }
