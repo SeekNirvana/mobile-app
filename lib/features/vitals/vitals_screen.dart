@@ -265,9 +265,16 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
 
   void _toggleSpO2() async {
     final isMeasuring = ref.read(spo2MeasuringProvider);
+    
+    // Check if ring is busy with another measurement
+    if (!isMeasuring && _isRingBusy) {
+      _showBusySnackBar();
+      return;
+    }
+    
     if (isMeasuring) {
       _cancelSafetyTimeout('spo2');
-      RingPlugin.stopSpO2();
+      await RingPlugin.stopSpO2();
       ref.read(spo2MeasuringProvider.notifier).state = false;
     } else {
       try {
@@ -281,6 +288,12 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
   }
 
   void _startTemperature() async {
+    // Check if ring is busy
+    if (_isRingBusy) {
+      _showBusySnackBar();
+      return;
+    }
+    
     if (!ref.read(temperatureMeasuringProvider)) {
       try {
         _startSafetyTimeout('temp');
@@ -311,6 +324,27 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
     }
   }
   
+  void _showBusySnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            SizedBox(
+              width: 16, 
+              height: 16, 
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            SizedBox(width: 12),
+            Text('Ring is busy measuring. Please wait...'),
+          ],
+        ),
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _showBusyError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

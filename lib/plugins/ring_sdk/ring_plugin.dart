@@ -72,22 +72,45 @@ class RingPlugin {
           _isHistorySyncing = false;
           _historySyncController.add(false);
           break;
-        case 'heartRate':
-        case 'spo2':
-        case 'bloodPressure':
-        case 'temperature':
-          // Measurement completed
-          _isMeasuring = false;
-          _measurementStateController.add(false);
-          break;
+        // Measurement START events - set busy when progress first comes in
         case 'heartRateProgress':
-        case 'spo2Progress':
-        case 'bpProgress':
-          // Measurement started
           if (!_isMeasuring) {
             _isMeasuring = true;
             _measurementStateController.add(true);
           }
+          break;
+        // Measurement COMPLETE events - only reset on complete/error
+        case 'heartRateComplete':
+        case 'heartRateError':
+          _isMeasuring = false;
+          _measurementStateController.add(false);
+          break;
+        case 'spo2Progress':
+          if (!_isMeasuring) {
+            _isMeasuring = true;
+            _measurementStateController.add(true);
+          }
+          break;
+        case 'spo2Complete':
+        case 'spo2Error':
+          _isMeasuring = false;
+          _measurementStateController.add(false);
+          break;
+        case 'bpProgress':
+          if (!_isMeasuring) {
+            _isMeasuring = true;
+            _measurementStateController.add(true);
+          }
+          break;
+        case 'bloodPressure': // BP result received
+        case 'bpError':
+          _isMeasuring = false;
+          _measurementStateController.add(false);
+          break;
+        case 'temperature':
+        case 'temperatureError':
+          _isMeasuring = false;
+          _measurementStateController.add(false);
           break;
       }
     });
