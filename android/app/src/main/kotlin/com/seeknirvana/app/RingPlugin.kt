@@ -23,7 +23,6 @@ import com.lm.sdk.inter.IQ2Listener
 import com.lm.sdk.inter.IHistoryListener
 import com.lm.sdk.inter.ITempListener
 import com.lm.sdk.inter.IBloodPressureListener
-import com.lm.sdk.inter.ISNListener
 import com.lm.sdk.BLEService
 import com.lm.sdk.mode.GreenAndIrBean
 import com.lm.sdk.mode.SystemControlBean
@@ -258,17 +257,8 @@ class RingPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(null)
             }
             "getSerialNumber" -> {
-                Log.d(TAG, "MethodChannel: getSerialNumber called")
-                commandQueue.enqueue {
-                    LmAPI.GET_SN(object : ISNListener {
-                        override fun getSn(sn: String?) {
-                            Log.d(TAG, "Serial Number received: $sn")
-                            sendHealthData("serialNumber", mapOf("sn" to (sn ?: "")))
-                        }
-                        override fun setSn(success: Boolean) {}
-                    })
-                }
-                result.success(null)
+                Log.w(TAG, "Serial number not available in Android SDK v1.0.44")
+                result.error("NOT_SUPPORTED", "Serial number not available in this SDK version", null)
             }
             "getVersion" -> {
                 Log.d(TAG, "MethodChannel: getVersion called")
