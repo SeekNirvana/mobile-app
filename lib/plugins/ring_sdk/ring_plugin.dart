@@ -72,45 +72,32 @@ class RingPlugin {
           _isHistorySyncing = false;
           _historySyncController.add(false);
           break;
-        // Measurement START events - set busy when progress first comes in
-        case 'heartRateProgress':
-          if (!_isMeasuring) {
-            _isMeasuring = true;
-            _measurementStateController.add(true);
-          }
-          break;
-        // Measurement COMPLETE events - only reset on complete/error
+        // Measurement COMPLETE/ERROR events - reset busy state
         case 'heartRateComplete':
         case 'heartRateError':
-          _isMeasuring = false;
-          _measurementStateController.add(false);
-          break;
-        case 'spo2Progress':
-          if (!_isMeasuring) {
-            _isMeasuring = true;
-            _measurementStateController.add(true);
+          if (_isMeasuring) {
+            _isMeasuring = false;
+            _measurementStateController.add(false);
           }
           break;
         case 'spo2Complete':
         case 'spo2Error':
-          _isMeasuring = false;
-          _measurementStateController.add(false);
-          break;
-        case 'bpProgress':
-          if (!_isMeasuring) {
-            _isMeasuring = true;
-            _measurementStateController.add(true);
+          if (_isMeasuring) {
+            _isMeasuring = false;
+            _measurementStateController.add(false);
           }
           break;
-        case 'bloodPressure': // BP result received
         case 'bpError':
-          _isMeasuring = false;
-          _measurementStateController.add(false);
+          if (_isMeasuring) {
+            _isMeasuring = false;
+            _measurementStateController.add(false);
+          }
           break;
-        case 'temperature':
         case 'temperatureError':
-          _isMeasuring = false;
-          _measurementStateController.add(false);
+          if (_isMeasuring) {
+            _isMeasuring = false;
+            _measurementStateController.add(false);
+          }
           break;
       }
     });
@@ -235,10 +222,11 @@ class RingPlugin {
     await _assertCanStartMeasurement('Heart Rate');
     
     await _commandLock.synchronized(() async {
-      _isMeasuring = true;
-      _measurementStateController.add(true);
       try {
         await _channel.invokeMethod('startHeartRate');
+        // Only set measuring state AFTER native call succeeds
+        _isMeasuring = true;
+        _measurementStateController.add(true);
       } catch (e) {
         _isMeasuring = false;
         _measurementStateController.add(false);
@@ -258,10 +246,11 @@ class RingPlugin {
     await _assertCanStartMeasurement('SpO2');
     
     await _commandLock.synchronized(() async {
-      _isMeasuring = true;
-      _measurementStateController.add(true);
       try {
         await _channel.invokeMethod('startSpO2');
+        // Only set measuring state AFTER native call succeeds
+        _isMeasuring = true;
+        _measurementStateController.add(true);
       } catch (e) {
         _isMeasuring = false;
         _measurementStateController.add(false);
@@ -281,10 +270,11 @@ class RingPlugin {
     await _assertCanStartMeasurement('Blood Pressure');
     
     await _commandLock.synchronized(() async {
-      _isMeasuring = true;
-      _measurementStateController.add(true);
       try {
         await _channel.invokeMethod('startBloodPressure');
+        // Only set measuring state AFTER native call succeeds
+        _isMeasuring = true;
+        _measurementStateController.add(true);
       } catch (e) {
         _isMeasuring = false;
         _measurementStateController.add(false);
@@ -304,10 +294,11 @@ class RingPlugin {
     await _assertCanStartMeasurement('Temperature');
     
     await _commandLock.synchronized(() async {
-      _isMeasuring = true;
-      _measurementStateController.add(true);
       try {
         await _channel.invokeMethod('startTemperature');
+        // Only set measuring state AFTER native call succeeds
+        _isMeasuring = true;
+        _measurementStateController.add(true);
       } catch (e) {
         _isMeasuring = false;
         _measurementStateController.add(false);

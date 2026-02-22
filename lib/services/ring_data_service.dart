@@ -63,15 +63,11 @@ class RingDataService {
         case 'heartRateComplete':
           debugPrint('[RingDataService] Heart Rate Measurement Complete');
           ref.read(heartRateMeasuringProvider.notifier).state = false;
-          // Reset RingPlugin internal state
-          RingPlugin.stopHeartRate();
           break;
 
         case 'heartRateError':
           debugPrint('[RingDataService] Heart Rate Error: ${data['code']}');
           ref.read(heartRateMeasuringProvider.notifier).state = false;
-          // Reset RingPlugin internal state
-          RingPlugin.stopHeartRate();
           break;
 
         case 'spo2':
@@ -86,15 +82,11 @@ class RingDataService {
         case 'spo2Complete':
           debugPrint('[RingDataService] SpO2 Measurement Complete');
           ref.read(spo2MeasuringProvider.notifier).state = false;
-          // Reset RingPlugin internal state
-          RingPlugin.stopSpO2();
           break;
 
         case 'spo2Error':
           debugPrint('[RingDataService] SpO2 Error: ${data['code']}');
           ref.read(spo2MeasuringProvider.notifier).state = false;
-          // Reset RingPlugin internal state
-          RingPlugin.stopSpO2();
           break;
 
         case 'ecg':
@@ -144,8 +136,6 @@ class RingDataService {
             ref.read(systolicProvider.notifier).state = systolic;
             ref.read(diastolicProvider.notifier).state = diastolic;
             ref.read(bpMeasuringProvider.notifier).state = false;
-            // Reset RingPlugin internal state
-            RingPlugin.stopBloodPressure();
             debugPrint('[RingDataService] Blood Pressure: $systolic/$diastolic');
           }
           break;
@@ -183,8 +173,6 @@ class RingDataService {
           debugPrint('[RingDataService] BP Error: ${data['code']}');
           ref.read(bpMeasuringProvider.notifier).state = false;
           ref.read(bpProgressValueProvider.notifier).state = 0;
-          // Reset RingPlugin internal state
-          RingPlugin.stopBloodPressure();
           break;
 
         case 'bloodPressureRaw':
