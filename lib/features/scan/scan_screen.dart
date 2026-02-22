@@ -357,7 +357,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Text(
-              'Scanning for ChipletRing devices...\nMake sure your ring is powered on.',
+              'Scanning for Nirvana Rings...\nMake sure your ring is powered on.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),

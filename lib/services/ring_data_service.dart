@@ -58,6 +58,7 @@ class RingDataService {
         case 'heartRateComplete':
           debugPrint('[RingDataService] Heart Rate Measurement Complete');
           ref.read(heartRateMeasuringProvider.notifier).state = false;
+          ref.read(heartRateLastScanProvider.notifier).state = DateTime.now();
           break;
 
         case 'heartRateError':
@@ -77,6 +78,7 @@ class RingDataService {
         case 'spo2Complete':
           debugPrint('[RingDataService] SpO2 Measurement Complete');
           ref.read(spo2MeasuringProvider.notifier).state = false;
+          ref.read(spo2LastScanProvider.notifier).state = DateTime.now();
           break;
 
         case 'spo2Error':
@@ -95,6 +97,7 @@ class RingDataService {
             ref.read(systolicProvider.notifier).state = systolic;
             ref.read(diastolicProvider.notifier).state = diastolic;
             ref.read(bpMeasuringProvider.notifier).state = false;
+            ref.read(bpLastScanProvider.notifier).state = DateTime.now();
             debugPrint('[RingDataService] Blood Pressure: $systolic/$diastolic');
           }
           break;
@@ -156,6 +159,7 @@ class RingDataService {
             }
             ref.read(temperatureProvider.notifier).state = normalizedTemp;
             ref.read(temperatureMeasuringProvider.notifier).state = false;
+            ref.read(temperatureLastScanProvider.notifier).state = DateTime.now();
             debugPrint('[RingDataService] Temperature: $normalizedTemp°C (raw: $temp)');
           }
           break;

@@ -85,3 +85,9 @@ final healthScoreProvider = Provider<int>((ref) {
 // Heart rate history (populated as measurements are taken)
 final heartRateHistoryProvider = StateProvider<List<double>>((ref) => []);
 
+// Last scan timestamps for each vital
+final heartRateLastScanProvider = StateProvider<DateTime?>((ref) => null);
+final spo2LastScanProvider = StateProvider<DateTime?>((ref) => null);
+final temperatureLastScanProvider = StateProvider<DateTime?>((ref) => null);
+final bpLastScanProvider = StateProvider<DateTime?>((ref) => null);
+

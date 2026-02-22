@@ -184,8 +184,8 @@ class RingPlugin {
 
   static Future<void> setPersonalInformation({
     int sex = 0,
-    int age = 30,
-    int height = 170,
+    int age = 33,
+    int height = 178,
     int weight = 70,
   }) async {
     await _channel.invokeMethod('setPersonalInformation', {
