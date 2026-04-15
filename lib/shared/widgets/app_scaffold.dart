@@ -9,11 +9,24 @@ class AppScaffold extends StatelessWidget {
 
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
-    if (location.startsWith('/vitals')) return 1;
-    if (location.startsWith('/sleep')) return 1; // Sleep shows Vitals as selected
-    if (location.startsWith('/activities')) return 2;
-    if (location.startsWith('/profile')) return 3;
-    if (location.startsWith('/capabilities')) return 3; // Capabilities shows Profile as selected
+    if (location.startsWith('/vitals')) {
+      return 1;
+    }
+    if (location.startsWith('/sleep')) {
+      return 1; // Sleep shows Vitals as selected
+    }
+    if (location.startsWith('/activities')) {
+      return 2;
+    }
+    if (location.startsWith('/guides')) {
+      return 3;
+    }
+    if (location.startsWith('/profile')) {
+      return 4;
+    }
+    if (location.startsWith('/capabilities')) {
+      return 4; // Capabilities shows Profile as selected
+    }
     return 0;
   }
 
@@ -29,7 +42,9 @@ class AppScaffold extends StatelessWidget {
           color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
           border: Border(
             top: BorderSide(
-              color: isDark ? AppColors.cardBorderDark : AppColors.cardBorderLight,
+              color: isDark
+                  ? AppColors.cardBorderDark
+                  : AppColors.cardBorderLight,
               width: 0.5,
             ),
           ),
@@ -59,9 +74,15 @@ class AppScaffold extends StatelessWidget {
                   onTap: () => context.go('/activities'),
                 ),
                 _NavItem(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Guides',
+                  isSelected: index == 3,
+                  onTap: () => context.go('/guides'),
+                ),
+                _NavItem(
                   icon: Icons.person_rounded,
                   label: 'Profile',
-                  isSelected: index == 3,
+                  isSelected: index == 4,
                   onTap: () => context.go('/profile'),
                 ),
               ],

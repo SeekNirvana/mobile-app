@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
@@ -9,7 +10,7 @@ import 'services/ring_data_service.dart';
 import 'services/ring_connection_service.dart';
 import 'plugins/ring_sdk/ring_plugin.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -19,6 +20,9 @@ void main() {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
+  
+  // Initialize Flutter Gemma for on-device AI
+  await FlutterGemma.initialize();
   
   // Request Bluetooth permission early on iOS to ensure BCLRingSDK can initialize
   _requestInitialBluetoothPermission();
