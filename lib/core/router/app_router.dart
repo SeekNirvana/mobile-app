@@ -7,6 +7,7 @@ import 'package:seeknirvana/features/activities/activities_screen.dart';
 import 'package:seeknirvana/features/guides/guides_screen.dart';
 import 'package:seeknirvana/features/profile/profile_screen.dart';
 import 'package:seeknirvana/features/profile/capabilities_screen.dart';
+import 'package:seeknirvana/features/profile/about_screen.dart';
 import 'package:seeknirvana/features/scan/scan_screen.dart';
 import 'package:seeknirvana/shared/widgets/app_scaffold.dart';
 
@@ -56,6 +57,11 @@ final router = GoRouter(
           path: '/capabilities',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: CapabilitiesScreen()),
+        ),
+        GoRoute(
+          path: '/about',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: AboutScreen()),
         ),
       ],
     ),

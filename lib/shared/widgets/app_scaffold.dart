@@ -27,6 +27,9 @@ class AppScaffold extends StatelessWidget {
     if (location.startsWith('/capabilities')) {
       return 4; // Capabilities shows Profile as selected
     }
+    if (location.startsWith('/about')) {
+      return 4; // About shows Profile as selected
+    }
     return 0;
   }
 
