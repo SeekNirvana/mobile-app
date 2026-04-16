@@ -62,6 +62,16 @@ class GuidePersonaDefinition {
   });
 }
 
+List<GuideKind> guideKindsSharingBundle(GuidePersonaDefinition definition) {
+  final modelFile = guideInstalledModelFileName(definition);
+  return activeGuideKinds
+      .where((kind) {
+        return guideInstalledModelFileName(guidePersonaDefinitions[kind]!) ==
+            modelFile;
+      })
+      .toList(growable: false);
+}
+
 String guideInstalledModelFileName(GuidePersonaDefinition definition) {
   return Uri.parse(definition.modelDownloadUrl).pathSegments.last;
 }
@@ -154,9 +164,9 @@ const Map<GuideKind, GuidePersonaDefinition> guidePersonaDefinitions = {
     remoteDirectory: '',
     localFolderName: 'luna-gemma4',
     shortDescription:
-        'A body-first guide for sleep tension, breath pacing, wind-down routines, and gentle movement before bed.',
+        'A calm, body-first guide for easing tension, settling restlessness, and preparing for deeper sleep.',
     tooltipSummary:
-        'Luna is the grounded, body-first guide. Choose Luna for sleep tension, restlessness, body discomfort, breath pacing, and gentle physical unwinding.',
+        'Luna is the grounded, body-first guide. Choose Luna for sleep tension, physical unease, restless energy, breath pacing, and gentle unwinding before bed.',
     starterMessage:
         'I\'m Luna. Bring me what your body is feeling tonight, and we\'ll work with one grounded, supportive next step.',
     quickPrompts: [
@@ -165,7 +175,7 @@ const Map<GuideKind, GuidePersonaDefinition> guidePersonaDefinitions = {
       'My jaw and neck carry stress at night. Help me settle.',
     ],
     systemPrompt:
-        'You are Luna, SeekNirvana\'s private somatic guide. Speak with warmth, steadiness, and simple precision. Help the user settle sleep-related physical tension, restlessness, breath dysregulation, and body-based stress using gentle, low-risk practices. Keep answers grounded in sensation, pacing, posture, and nervous-system settling. Usually offer one primary practice first, not a long list. Keep language calm and uncluttered. Avoid sounding clinical, mystical, or overly poetic. Do not diagnose, prescribe medication, or claim certainty. Encourage stopping if discomfort increases and suggest professional care when symptoms sound dangerous, severe, or persistent.',
+        'You are Luna, SeekNirvana\'s private somatic guide. Speak with warmth, steadiness, and grounded confidence. Help the user with body-based sleep friction: tension, restlessness, breath dysregulation, physical stress, bedtime discomfort, and trouble settling into rest. Lead with body awareness, pacing, posture, breath, muscle release, and low-risk sleep-supportive routines. Usually offer one best next step first, then one optional follow-up if helpful. Keep answers practical, calm, and uncluttered. Prefer supportive coaching over explanation-heavy teaching. Never output hidden reasoning, XML-like tags, or meta commentary. Do not diagnose, prescribe medication, or claim certainty. If symptoms sound dangerous, severe, or persistent, encourage appropriate professional care.',
     flutterGemmaModelType: ModelType.gemmaIt,
     modelFileType: ModelFileType.litertlm,
     modelDownloadUrl:
@@ -177,14 +187,14 @@ const Map<GuideKind, GuidePersonaDefinition> guidePersonaDefinitions = {
     name: 'Nova',
     title: 'Cognitive Guide',
     specialty: 'Mind, dreams, and inner practice',
-    modelLabel: 'Qwen 3 0.6B on-device',
-    repoId: 'litert-community/Qwen3-0.6B',
+    modelLabel: 'Gemma 4 E2B on-device',
+    repoId: 'google/gemma-4-e2b-it',
     remoteDirectory: '',
-    localFolderName: 'nova-qwen3',
+    localFolderName: 'nova-gemma4',
     shortDescription:
-        'A reflective guide for dream recall, lucid dreaming practice, meditation, and easing mental loops before sleep.',
+        'A reflective guide for quieting mental loops, deepening dream recall, and building a steadier inner practice.',
     tooltipSummary:
-        'Nova is the reflective, mind-first guide. Choose Nova for dream work, meditation, anxious thought loops, mental decompression, and insight-oriented reflection.',
+        'Nova is the reflective, mind-first guide. Choose Nova for dream work, meditation, bedtime overthinking, mental decompression, and insight-oriented reflection.',
     starterMessage:
         'I\'m Nova. Bring me the thought, dream, or inner pattern you want to understand, and we\'ll work through it with clarity and calm.',
     quickPrompts: [
@@ -193,11 +203,11 @@ const Map<GuideKind, GuidePersonaDefinition> guidePersonaDefinitions = {
       'How should I start lucid dreaming without overcomplicating it?',
     ],
     systemPrompt:
-        'You are Nova, SeekNirvana\'s private reflective guide. Speak with calm clarity, gentle curiosity, and concise insight. Help the user with dream recall, lucid dreaming routines, meditation, bedtime overthinking, and reflective mental decompression. Ask thoughtful follow-up questions only when they truly help. Prefer one clear frame or practice over a long menu of advice. Avoid grand interpretations, fortune-telling, or making dreams sound absolute. Do not diagnose mental illness or provide crisis counseling. If the user sounds at risk or medically unwell, encourage professional or emergency support appropriately.',
-    flutterGemmaModelType: ModelType.qwen,
+        'You are Nova, SeekNirvana\'s private reflective guide. Speak with calm clarity, emotional intelligence, and concise insight. Help the user with dream recall, lucid dreaming practice, meditation, bedtime overthinking, reflective journaling, and mental decompression before sleep. Favor clear framing, pattern recognition, and gentle reframes. When helpful, offer a short reflective question or a structured practice the user can try tonight or tomorrow. Keep responses substantial enough to feel useful, usually one to three short paragraphs or a brief list, but avoid rambling. Never output hidden reasoning, <think> tags, or chain-of-thought. Avoid grand interpretations, fortune-telling, or making dreams sound absolute. Do not diagnose mental illness or provide crisis counseling. If the user sounds unsafe or medically unwell, encourage appropriate professional or emergency support.',
+    flutterGemmaModelType: ModelType.gemmaIt,
     modelFileType: ModelFileType.litertlm,
     modelDownloadUrl:
-        'https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B.litertlm',
+        'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm',
     huggingFaceToken: null,
   ),
 };
@@ -366,6 +376,13 @@ class GuideModelManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> recheckSharedModelStatuses(GuideKind kind) async {
+    final definition = guidePersonaDefinitions[kind]!;
+    for (final relatedKind in guideKindsSharingBundle(definition)) {
+      await recheckModelStatus(relatedKind);
+    }
+  }
+
   Future<void> downloadModel(
     GuideKind kind, {
     Function(double)? onProgress,
@@ -422,6 +439,7 @@ class GuideModelManager extends ChangeNotifier {
         state.errorMessage = null;
         _globalError = null;
         debugPrint('Model ${definition.name} installed and verified');
+        await recheckSharedModelStatuses(kind);
       } else {
         await manager.deleteModel(spec);
         state.status = GuideModelStatus.failed;
@@ -454,9 +472,12 @@ class GuideModelManager extends ChangeNotifier {
 
     try {
       await FlutterGemmaPlugin.instance.modelManager.deleteModel(spec);
-      state.status = GuideModelStatus.missing;
-      state.progress = 0;
-      state.errorMessage = null;
+      for (final relatedKind in guideKindsSharingBundle(state.definition)) {
+        final relatedState = _states[relatedKind]!;
+        relatedState.status = GuideModelStatus.missing;
+        relatedState.progress = 0;
+        relatedState.errorMessage = null;
+      }
     } catch (e) {
       state.errorMessage = 'Failed to delete model: $e';
     }

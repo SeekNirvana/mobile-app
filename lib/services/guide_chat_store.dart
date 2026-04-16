@@ -250,6 +250,55 @@ class GuideChatStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteSession(String sessionId) async {
+    await init();
+    final session = _sessionById(sessionId);
+    if (session == null) return;
+
+    await _database!.transaction((txn) async {
+      await txn.delete('sessions', where: 'id = ?', whereArgs: [sessionId]);
+    });
+
+    _sessions.removeWhere((item) => item.id == sessionId);
+    if (_selectedSessionId == sessionId) {
+      final guideSessions = sessionsForGuide(session.guide);
+      _selectedSessionId = guideSessions.isNotEmpty
+          ? guideSessions.first.id
+          : null;
+    }
+    _ensureValidSelection();
+    await _saveSelection();
+    notifyListeners();
+  }
+
+  Future<void> clearSessions({GuideKind? guide}) async {
+    await init();
+    final targetGuide = guide;
+
+    await _database!.transaction((txn) async {
+      if (targetGuide == null) {
+        await txn.delete('sessions');
+      } else {
+        await txn.delete(
+          'sessions',
+          where: 'guide = ?',
+          whereArgs: [targetGuide.name],
+        );
+      }
+    });
+
+    if (targetGuide == null) {
+      _sessions.clear();
+    } else {
+      _sessions.removeWhere((session) => session.guide == targetGuide);
+    }
+
+    _selectedSessionId = null;
+    _ensureValidSelection();
+    await _saveSelection();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _modelManager.removeListener(_handleModelStorageChanged);

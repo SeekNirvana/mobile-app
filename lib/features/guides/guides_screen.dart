@@ -95,6 +95,39 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
     );
   }
 
+  Future<void> _deleteSession(
+    BuildContext context,
+    GuideChatStore store,
+    GuideChatSession session,
+  ) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete chat?'),
+          content: Text(
+            'This will remove "${session.title}" from local storage on this device.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true) {
+      await store.deleteSession(session.id);
+    }
+  }
+
   Future<void> _sendMessage(
     String text,
     GuideChatStore store,
@@ -144,6 +177,11 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
     final session = store.currentSession;
     final selectedGuide = store.selectedGuide;
     final persona = guidePersonaDefinitions[selectedGuide]!;
+    final hasUserMessage =
+        session?.messages.any(
+          (message) => message.role == GuideChatMessageRole.user,
+        ) ??
+        false;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -154,6 +192,7 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
       drawer: _GuideHistoryDrawer(
         store: store,
         onRenameSession: (session) => _renameSession(context, store, session),
+        onDeleteSession: (session) => _deleteSession(context, store, session),
       ),
       body: SafeArea(
         child: Column(
@@ -187,7 +226,7 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         Text(
-                          '${persona.name} · ${persona.modelLabel}',
+                          'Private · ${persona.modelLabel}',
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
                                 fontSize: 11,
@@ -224,19 +263,10 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
                   },
                 ),
               ),
-            // Guide Hero Card - hide if no session to save space
-            if (session == null) ...[
+            if (!hasUserMessage) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
                 child: _GuideHeroCard(persona: persona),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                child: _GuideStatusBanner(
-                  manager: manager,
-                  selectedGuide: selectedGuide,
-                  onOpenInfo: () => _openInfoPage(context),
-                ),
               ),
               const SizedBox(height: 6),
             ] else ...[
@@ -568,65 +598,6 @@ class _GuideHeroCard extends StatelessWidget {
   }
 }
 
-class _GuideStatusBanner extends StatelessWidget {
-  final GuideModelManager manager;
-  final GuideKind selectedGuide;
-  final VoidCallback onOpenInfo;
-
-  const _GuideStatusBanner({
-    required this.manager,
-    required this.selectedGuide,
-    required this.onOpenInfo,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final state = manager.stateFor(selectedGuide);
-    final persona = guidePersonaDefinitions[selectedGuide]!;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final downloaded = state.status == GuideModelStatus.ready;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: downloaded
-            ? AppColors.info.withValues(alpha: isDark ? 0.16 : 0.08)
-            : AppColors.warning.withValues(alpha: isDark ? 0.16 : 0.08),
-        borderRadius: BorderRadius.circular(AppConstants.radiusLG),
-        border: Border.all(
-          color: downloaded
-              ? AppColors.info.withValues(alpha: 0.32)
-              : AppColors.warning.withValues(alpha: 0.32),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            downloaded ? Icons.memory_rounded : Icons.download_rounded,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              downloaded
-                  ? '${persona.name}\'s AI model is downloaded and ready for local, private chat.'
-                  : 'Download ${persona.name}\'s AI model from the info page to enable private, on-device conversations.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(height: 1.35),
-            ),
-          ),
-          if (!downloaded) ...[
-            const SizedBox(width: 12),
-            TextButton(onPressed: onOpenInfo, child: const Text('Open')),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _RuntimeDebugCard extends StatelessWidget {
   final GuideRuntimeService runtimeService;
 
@@ -824,10 +795,12 @@ class _ComposerBar extends StatelessWidget {
 class _GuideHistoryDrawer extends StatelessWidget {
   final GuideChatStore store;
   final Future<void> Function(GuideChatSession session) onRenameSession;
+  final Future<void> Function(GuideChatSession session) onDeleteSession;
 
   const _GuideHistoryDrawer({
     required this.store,
     required this.onRenameSession,
+    required this.onDeleteSession,
   });
 
   @override
@@ -914,6 +887,7 @@ class _GuideHistoryDrawer extends StatelessWidget {
                           Navigator.of(context).pop();
                         },
                         onRename: () => onRenameSession(session),
+                        onDelete: () => onDeleteSession(session),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -930,6 +904,7 @@ class _GuideHistoryDrawer extends StatelessWidget {
                           Navigator.of(context).pop();
                         },
                         onRename: () => onRenameSession(session),
+                        onDelete: () => onDeleteSession(session),
                       ),
                     ),
                   ],
@@ -981,12 +956,14 @@ class _SessionTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onRename;
+  final VoidCallback onDelete;
 
   const _SessionTile({
     required this.session,
     required this.selected,
     required this.onTap,
     required this.onRename,
+    required this.onDelete,
   });
 
   @override
@@ -1024,6 +1001,12 @@ class _SessionTile extends StatelessWidget {
                   splashRadius: 18,
                   tooltip: 'Rename chat',
                 ),
+                IconButton(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  splashRadius: 18,
+                  tooltip: 'Delete chat',
+                ),
               ],
             ),
             Text(
@@ -1042,9 +1025,46 @@ class GuideInfoScreen extends ConsumerWidget {
 
   const GuideInfoScreen({super.key, required this.runtimeService});
 
+  Future<void> _confirmClearChats(
+    BuildContext context,
+    GuideChatStore store, {
+    GuideKind? guide,
+  }) async {
+    final label = guide == null
+        ? 'all saved chats'
+        : '${guidePersonaDefinitions[guide]!.name} chats';
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete saved chats?'),
+          content: Text(
+            'This will remove $label from local storage on this device.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true) {
+      await store.clearSessions(guide: guide);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final manager = ref.watch(guideModelManagerProvider);
+    final store = ref.watch(guideChatStoreProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -1079,6 +1099,70 @@ class GuideInfoScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               _RuntimeDebugCard(runtimeService: runtimeService),
             ],
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.cardDark : AppColors.cardLight,
+                borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+                border: Border.all(
+                  color: isDark
+                      ? AppColors.cardBorderDark
+                      : AppColors.cardBorderLight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Saved Chats',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Delete locally stored sessions if you want a clean slate or a lighter backup.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _confirmClearChats(
+                          context,
+                          store,
+                          guide: GuideKind.luna,
+                        ),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Clear Luna chats'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _confirmClearChats(
+                          context,
+                          store,
+                          guide: GuideKind.nova,
+                        ),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Clear Nova chats'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () => _confirmClearChats(context, store),
+                        icon: const Icon(Icons.delete_sweep_rounded),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                        ),
+                        label: const Text('Clear all chats'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
             // Storage Info
             Container(

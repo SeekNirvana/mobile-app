@@ -249,10 +249,6 @@ class GuideRuntimeService {
   }
 
   PreferredBackend _preferredBackendFor(GuidePersonaDefinition definition) {
-    if (definition.kind == GuideKind.nova) {
-      return PreferredBackend.cpu;
-    }
-
     return PreferredBackend.gpu;
   }
 
