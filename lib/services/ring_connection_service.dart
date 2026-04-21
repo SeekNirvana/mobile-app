@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../plugins/ring_sdk/ring_plugin.dart';
@@ -28,12 +29,18 @@ class RingConnectionService {
     });
 
     // Attempt auto-reconnect on startup
+    if (Platform.isIOS) {
+      debugPrint(
+        '[RingConnectionService] Skipping auto-reconnect on iOS startup.',
+      );
+      return;
+    }
     _attemptAutoReconnect();
   }
 
   void _handleConnectionStateChange(RingConnectionState state) {
     final currentState = ref.read(ringConnectionStateProvider);
-    
+
     // Update the provider
     ref.read(ringConnectionStateProvider.notifier).state = state;
 
@@ -74,16 +81,19 @@ class RingConnectionService {
     final savedName = await getSavedDeviceName();
 
     if (savedMac != null && savedMac.isNotEmpty) {
-      debugPrint('[RingConnectionService] Auto-reconnecting to $savedName ($savedMac)');
+      debugPrint(
+        '[RingConnectionService] Auto-reconnecting to $savedName ($savedMac)',
+      );
       ref.read(autoReconnectingProvider.notifier).state = true;
-      
+
       // Set state to connecting
-      ref.read(ringConnectionStateProvider.notifier).state = RingConnectionState.connecting;
-      
+      ref.read(ringConnectionStateProvider.notifier).state =
+          RingConnectionState.connecting;
+
       // Attempt connection
       try {
         await RingPlugin.connect(savedMac);
-        
+
         // Restore the connected device info
         ref.read(connectedDeviceProvider.notifier).state = ScannedDevice(
           name: savedName ?? 'Loop Ring',
@@ -95,7 +105,7 @@ class RingConnectionService {
         debugPrint('[RingConnectionService] Auto-reconnect failed: $e');
         _scheduleReconnect();
       }
-      
+
       ref.read(autoReconnectingProvider.notifier).state = false;
     }
   }
@@ -107,7 +117,9 @@ class RingConnectionService {
     }
 
     _reconnectAttempts++;
-    debugPrint('[RingConnectionService] Scheduling reconnect attempt $_reconnectAttempts/$_maxReconnectAttempts');
+    debugPrint(
+      '[RingConnectionService] Scheduling reconnect attempt $_reconnectAttempts/$_maxReconnectAttempts',
+    );
 
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: 2 * _reconnectAttempts), () {
@@ -119,7 +131,9 @@ class RingConnectionService {
     final device = ref.read(connectedDeviceProvider);
     if (device != null) {
       await saveConnectedDevice(device.macAddress, device.name);
-      debugPrint('[RingConnectionService] Saved device: ${device.name} (${device.macAddress})');
+      debugPrint(
+        '[RingConnectionService] Saved device: ${device.name} (${device.macAddress})',
+      );
     }
   }
 

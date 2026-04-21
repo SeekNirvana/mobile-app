@@ -8,6 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_startup_service.dart';
+
 enum GuideKind { luna, nova }
 
 const List<GuideKind> activeGuideKinds = [GuideKind.luna, GuideKind.nova];
@@ -299,6 +301,7 @@ class GuideModelManager extends ChangeNotifier {
 
   Future<void> _initialize() async {
     try {
+      await AppStartupService.instance.ensureInitialized();
       _defaultStorageDirectoryPath =
           await _resolveDefaultStorageDirectoryPath();
       final prefs = await SharedPreferences.getInstance();
@@ -343,6 +346,7 @@ class GuideModelManager extends ChangeNotifier {
     debugPrint('Checking model status for ${definition.name}');
 
     try {
+      await AppStartupService.instance.ensureInitialized();
       final manager = FlutterGemmaPlugin.instance.modelManager;
       final isInstalled = await manager.isModelInstalled(spec);
       debugPrint('Model ${definition.name} installed: $isInstalled');
@@ -401,6 +405,7 @@ class GuideModelManager extends ChangeNotifier {
     debugPrint('Model type: ${definition.flutterGemmaModelType}');
 
     try {
+      await AppStartupService.instance.ensureInitialized();
       await FlutterGemma.installModel(
             modelType: definition.flutterGemmaModelType,
             fileType: definition.modelFileType,
@@ -471,6 +476,7 @@ class GuideModelManager extends ChangeNotifier {
     final spec = guideInferenceModelSpec(state.definition);
 
     try {
+      await AppStartupService.instance.ensureInitialized();
       await FlutterGemmaPlugin.instance.modelManager.deleteModel(spec);
       for (final relatedKind in guideKindsSharingBundle(state.definition)) {
         final relatedState = _states[relatedKind]!;

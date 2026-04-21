@@ -489,7 +489,6 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks",
-					"$(SRCROOT)/Frameworks/BCLRingSDK.xcframework",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Seek Nirvana";
@@ -497,11 +496,6 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
-				);
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-framework",
-					BCLRingSDK,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.seeknirvana.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -684,7 +678,6 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks",
-					"$(SRCROOT)/Frameworks/BCLRingSDK.xcframework",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Seek Nirvana";
@@ -692,11 +685,6 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
-				);
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-framework",
-					BCLRingSDK,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.seeknirvana.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -719,7 +707,6 @@
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks",
-					"$(SRCROOT)/Frameworks/BCLRingSDK.xcframework",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Seek Nirvana";
@@ -727,11 +714,6 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
-				);
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-framework",
-					BCLRingSDK,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.seeknirvana.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";

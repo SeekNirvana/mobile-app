@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:path/path.dart' as p;
 
+import 'app_startup_service.dart';
 import 'guide_chat_store.dart';
 import 'guide_model_manager.dart';
 
@@ -40,6 +41,7 @@ class GuideRuntimeService {
   /// Initialize the runtime for a specific guide
   Future<void> initialize(GuideKind guide) async {
     debugPrint('Initializing runtime for guide: $guide');
+    await AppStartupService.instance.ensureInitialized();
 
     // If already initialized for this guide, skip
     if (_activeGuide == guide && _activeChat != null) {

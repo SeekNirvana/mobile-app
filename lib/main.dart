@@ -1,46 +1,91 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'providers/theme_provider.dart';
+import 'services/app_startup_service.dart';
 import 'services/ring_data_service.dart';
 import 'services/ring_connection_service.dart';
-import 'plugins/ring_sdk/ring_plugin.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
-  
-  // Initialize Flutter Gemma for on-device AI
-  await FlutterGemma.initialize();
-  
-  // Request Bluetooth permission early on iOS to ensure BCLRingSDK can initialize
-  _requestInitialBluetoothPermission();
-  
-  runApp(const ProviderScope(child: SeekNirvanaApp()));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ),
+  );
+
+  runApp(const ProviderScope(child: SeekNirvanaBootstrap()));
 }
 
-/// Request Bluetooth permission on app startup for iOS
-/// This ensures the BCLRingSDK can initialize properly
-void _requestInitialBluetoothPermission() async {
-  if (Platform.isIOS) {
-    // Small delay to ensure app is fully initialized
-    await Future.delayed(const Duration(milliseconds: 500));
-    try {
-      await RingPlugin.requestBluetoothPermission();
-    } catch (e) {
-      debugPrint('[Main] Error requesting Bluetooth permission: $e');
+class SeekNirvanaBootstrap extends ConsumerStatefulWidget {
+  const SeekNirvanaBootstrap({super.key});
+
+  @override
+  ConsumerState<SeekNirvanaBootstrap> createState() =>
+      _SeekNirvanaBootstrapState();
+}
+
+class _SeekNirvanaBootstrapState extends ConsumerState<SeekNirvanaBootstrap> {
+  bool _didBootstrap = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_bootstrap());
+    });
+  }
+
+  Future<void> _bootstrap() async {
+    if (_didBootstrap) {
+      return;
     }
+    _didBootstrap = true;
+
+    unawaited(
+      AppStartupService.instance.ensureInitialized().catchError((
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        debugPrint('[Main] FlutterGemma initialization failed: $error');
+        debugPrint('$stackTrace');
+      }),
+    );
+
+    if (Platform.isIOS) {
+      debugPrint(
+        '[Main] Skipping eager ring service initialization on iOS startup.',
+      );
+      return;
+    }
+
+    try {
+      ref.read(ringDataServiceProvider);
+    } catch (error, stackTrace) {
+      debugPrint('[Main] RingDataService init failed: $error');
+      debugPrint('$stackTrace');
+    }
+
+    try {
+      ref.read(ringConnectionServiceProvider);
+    } catch (error, stackTrace) {
+      debugPrint('[Main] RingConnectionService init failed: $error');
+      debugPrint('$stackTrace');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const SeekNirvanaApp();
   }
 }
 
@@ -50,10 +95,6 @@ class SeekNirvanaApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
-    // Initialize standard services
-    ref.watch(ringDataServiceProvider);
-    // Initialize connection service for auto-reconnect
-    ref.watch(ringConnectionServiceProvider);
 
     return MaterialApp.router(
       title: 'SeekNirvana',
