@@ -252,12 +252,14 @@ class GuideModelState {
 class GuideModelManager extends ChangeNotifier {
   static const _storageDirectoryKey = 'guide_model_storage_directory_v1';
   static const _runtimeDebugEnabledKey = 'guide_runtime_debug_enabled_v1';
+  static const _streamingEnabledKey = 'guide_streaming_enabled_v1';
 
   Future<void>? _initFuture;
   String? _storageDirectoryPath;
   String? _defaultStorageDirectoryPath;
   String? _globalError;
   bool _runtimeDebugEnabled = false;
+  bool _streamingEnabled = true;
 
   final Map<GuideKind, GuideModelState> _states = {
     for (final entry in guidePersonaDefinitions.entries)
@@ -273,6 +275,7 @@ class GuideModelManager extends ChangeNotifier {
   String? get defaultStorageDirectoryPath => _defaultStorageDirectoryPath;
 
   bool get runtimeDebugEnabled => _runtimeDebugEnabled;
+  bool get streamingEnabled => _streamingEnabled;
 
   String? get modelDirectoryPath => _storageDirectoryPath == null
       ? null
@@ -307,6 +310,7 @@ class GuideModelManager extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final savedPath = prefs.getString(_storageDirectoryKey);
       _runtimeDebugEnabled = prefs.getBool(_runtimeDebugEnabledKey) ?? false;
+      _streamingEnabled = prefs.getBool(_streamingEnabledKey) ?? true;
       _storageDirectoryPath = (savedPath?.trim().isNotEmpty ?? false)
           ? savedPath!.trim()
           : _defaultStorageDirectoryPath;
@@ -468,6 +472,14 @@ class GuideModelManager extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_runtimeDebugEnabledKey, enabled);
     _runtimeDebugEnabled = enabled;
+    notifyListeners();
+  }
+
+  Future<void> setStreamingEnabled(bool enabled) async {
+    await init();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_streamingEnabledKey, enabled);
+    _streamingEnabled = enabled;
     notifyListeners();
   }
 

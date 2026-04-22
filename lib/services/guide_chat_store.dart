@@ -563,6 +563,15 @@ class GuideChatStore extends ChangeNotifier {
     return null;
   }
 
+  GuideChatSession? _sessionContainingMessage(String messageId) {
+    for (final session in _sessions) {
+      if (session.messages.any((message) => message.id == messageId)) {
+        return session;
+      }
+    }
+    return null;
+  }
+
   void _replaceSession(GuideChatSession updatedSession) {
     final index = _sessions.indexWhere((item) => item.id == updatedSession.id);
     if (index >= 0) {
@@ -672,6 +681,114 @@ class GuideChatStore extends ChangeNotifier {
         guideMessage,
         updatedMessages.length - 1,
       );
+      await _updateSession(txn, updatedSession);
+    });
+
+    _replaceSession(updatedSession);
+    notifyListeners();
+  }
+
+  Future<String?> beginGuideResponseDraft() async {
+    final session = currentSession;
+    if (session == null) return null;
+
+    await init();
+
+    final now = DateTime.now();
+    final guideMessage = GuideChatMessage(
+      id: _newId('message'),
+      role: GuideChatMessageRole.guide,
+      text: '',
+      timestamp: now,
+    );
+
+    final updatedMessages = [...session.messages, guideMessage];
+    final updatedSession = session.copyWith(
+      messages: updatedMessages,
+      updatedAt: now,
+    );
+
+    await _database!.transaction((txn) async {
+      await _insertMessage(
+        txn,
+        session.id,
+        guideMessage,
+        updatedMessages.length - 1,
+      );
+      await _updateSession(txn, updatedSession);
+    });
+
+    _replaceSession(updatedSession);
+    notifyListeners();
+    return guideMessage.id;
+  }
+
+  Future<void> updateGuideResponseDraft(
+    String messageId,
+    String text, {
+    bool persist = false,
+  }) async {
+    await init();
+
+    final session = _sessionContainingMessage(messageId);
+    if (session == null) return;
+
+    final messageIndex = session.messages.indexWhere((m) => m.id == messageId);
+    if (messageIndex < 0) return;
+
+    final existingMessage = session.messages[messageIndex];
+    final updatedMessage = GuideChatMessage(
+      id: existingMessage.id,
+      role: existingMessage.role,
+      text: text,
+      timestamp: existingMessage.timestamp,
+    );
+
+    final updatedMessages = [...session.messages];
+    updatedMessages[messageIndex] = updatedMessage;
+
+    final updatedSession = session.copyWith(
+      messages: updatedMessages,
+      updatedAt: DateTime.now(),
+    );
+
+    if (persist) {
+      await _database!.transaction((txn) async {
+        await txn.update(
+          'messages',
+          {'text': text},
+          where: 'id = ?',
+          whereArgs: [messageId],
+        );
+        await _updateSession(txn, updatedSession);
+      });
+    }
+
+    _replaceSession(updatedSession);
+    notifyListeners();
+  }
+
+  Future<void> completeGuideResponseDraft(String messageId, String text) async {
+    await updateGuideResponseDraft(messageId, text, persist: true);
+  }
+
+  Future<void> removeGuideResponseDraft(String messageId) async {
+    await init();
+
+    final session = _sessionContainingMessage(messageId);
+    if (session == null) return;
+
+    final messageIndex = session.messages.indexWhere((m) => m.id == messageId);
+    if (messageIndex < 0) return;
+
+    final updatedMessages = [...session.messages]..removeAt(messageIndex);
+    final updatedSession = session.copyWith(
+      messages: updatedMessages,
+      updatedAt: DateTime.now(),
+    );
+
+    await _database!.transaction((txn) async {
+      await txn.delete('messages', where: 'id = ?', whereArgs: [messageId]);
       await _updateSession(txn, updatedSession);
     });
 

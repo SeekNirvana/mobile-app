@@ -93,6 +93,21 @@ class GuideRuntimeService {
     required GuideKind guide,
     required List<GuideChatMessage> messages,
   }) async {
+    var finalResponse = '';
+    await for (final partial in streamResponse(
+      guide: guide,
+      messages: messages,
+    )) {
+      finalResponse = partial;
+    }
+    return finalResponse;
+  }
+
+  /// Stream a response for the current chat session as text accumulates.
+  Stream<String> streamResponse({
+    required GuideKind guide,
+    required List<GuideChatMessage> messages,
+  }) async* {
     debugPrint('Generating response for guide: $guide');
 
     // Initialize if needed
@@ -121,24 +136,33 @@ class GuideRuntimeService {
         Message.text(text: lastUserMessage.text, isUser: true),
       );
 
-      // Generate response
+      // Generate response progressively as text arrives from the model.
       final stopwatch = Stopwatch()..start();
-      final response = await _activeChat!.generateChatResponse();
+      final buffer = StringBuffer();
+
+      await for (final response in _activeChat!.generateChatResponseAsync()) {
+        if (response is! TextResponse) {
+          continue;
+        }
+        buffer.write(response.token);
+        yield buffer.toString();
+      }
+
       stopwatch.stop();
       _lastGenerationDuration = stopwatch.elapsed;
+      final responseText = buffer.toString().trimRight();
 
-      if (response is TextResponse) {
-        debugPrint(
-          'Response: ${response.token.substring(0, response.token.length > 30 ? 30 : response.token.length)}...',
-        );
-        _lastResponseCharCount = response.token.length;
-        _lastPromptTokenCount = await _safeCountTokens(lastUserMessage.text);
-        _lastResponseTokenCount = await _safeCountTokens(response.token);
-        _lastError = null;
-        return response.token;
-      } else {
-        throw StateError('Unexpected response type');
+      if (responseText.isEmpty) {
+        throw StateError('No response generated from model');
       }
+
+      debugPrint(
+        'Response: ${responseText.substring(0, responseText.length > 30 ? 30 : responseText.length)}...',
+      );
+      _lastResponseCharCount = responseText.length;
+      _lastPromptTokenCount = await _safeCountTokens(lastUserMessage.text);
+      _lastResponseTokenCount = await _safeCountTokens(responseText);
+      _lastError = null;
     } catch (e, stack) {
       debugPrint('Error generating response: $e');
       debugPrint('Stack: $stack');

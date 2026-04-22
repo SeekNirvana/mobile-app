@@ -24,6 +24,7 @@ dependencies:
   path: ^1.9.1
   sqflite: ^2.4.2
   flutter_gemma: ^0.13.2
+  share_plus: ^13.1.0
 
 dev_dependencies:
   flutter_test:

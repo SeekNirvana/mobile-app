@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
@@ -18,6 +20,7 @@ class GuidesScreen extends ConsumerStatefulWidget {
 class _GuidesScreenState extends ConsumerState<GuidesScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _composerController = TextEditingController();
+  final ScrollController _messagesScrollController = ScrollController();
   final GuideRuntimeService _runtimeService = GuideRuntimeService();
   bool _isGenerating = false;
 
@@ -40,8 +43,20 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
   @override
   void dispose() {
     _composerController.dispose();
+    _messagesScrollController.dispose();
     _runtimeService.dispose();
     super.dispose();
+  }
+
+  void _scheduleScrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_messagesScrollController.hasClients) return;
+      _messagesScrollController.animateTo(
+        _messagesScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   void _openInfoPage(BuildContext context) {
@@ -131,7 +146,6 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
   Future<void> _sendMessage(
     String text,
     GuideChatStore store,
-    GuideChatSession session,
     GuideKind guide,
   ) async {
     if (text.trim().isEmpty || _isGenerating) return;
@@ -141,25 +155,78 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
 
     // Add user message to chat
     await store.sendMessage(text);
+    _scheduleScrollToBottom();
 
     setState(() {
       _isGenerating = true;
     });
 
-    try {
-      // Generate AI response
-      final response = await _runtimeService.generateResponse(
-        guide: guide,
-        messages: store.currentSession?.messages ?? [],
-      );
+    final streamingEnabled = ref
+        .read(guideModelManagerProvider)
+        .streamingEnabled;
+    String? draftMessageId;
+    var latestResponse = '';
+    var lastPersistAt = DateTime.now();
 
-      // Add guide response to chat
-      await store.addGuideResponse(response);
+    try {
+      if (streamingEnabled) {
+        draftMessageId = await store.beginGuideResponseDraft();
+        _scheduleScrollToBottom();
+
+        await for (final partial in _runtimeService.streamResponse(
+          guide: guide,
+          messages: store.currentSession?.messages ?? [],
+        )) {
+          latestResponse = partial;
+          final now = DateTime.now();
+          final shouldPersist =
+              now.difference(lastPersistAt) >=
+              const Duration(milliseconds: 250);
+
+          if (draftMessageId != null) {
+            await store.updateGuideResponseDraft(
+              draftMessageId,
+              latestResponse,
+              persist: shouldPersist,
+            );
+          }
+
+          if (shouldPersist) {
+            lastPersistAt = now;
+          }
+
+          _scheduleScrollToBottom();
+        }
+
+        if (draftMessageId != null) {
+          if (latestResponse.trim().isEmpty) {
+            await store.removeGuideResponseDraft(draftMessageId);
+          } else {
+            await store.completeGuideResponseDraft(
+              draftMessageId,
+              latestResponse,
+            );
+          }
+        }
+      } else {
+        latestResponse = await _runtimeService.generateResponse(
+          guide: guide,
+          messages: store.currentSession?.messages ?? [],
+        );
+        await store.addGuideResponse(latestResponse);
+        _scheduleScrollToBottom();
+      }
     } catch (e, stack) {
       debugPrint('Error generating response: $e');
       debugPrint('Stack trace: $stack');
-      // Show error in chat for debugging
-      await store.addGuideResponse('Error: $e');
+      if (draftMessageId != null) {
+        final fallbackText = latestResponse.trim().isEmpty
+            ? 'Error: $e'
+            : '${latestResponse.trimRight()}\n\n[Generation interrupted: $e]';
+        await store.completeGuideResponseDraft(draftMessageId, fallbackText);
+      } else {
+        await store.addGuideResponse('Error: $e');
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -167,6 +234,58 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
         });
       }
     }
+  }
+
+  Future<void> _copyMessage(BuildContext context, String text) async {
+    final normalized = _plainTextForExport(text);
+    if (normalized.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: normalized));
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Message copied')));
+    }
+  }
+
+  Future<void> _shareChatThrough(
+    BuildContext context,
+    GuideChatSession session,
+    int messageIndex,
+  ) async {
+    final transcript = _buildTranscript(session, messageIndex);
+    await SharePlus.instance.share(
+      ShareParams(
+        text: transcript,
+        title: '${guidePersonaDefinitions[session.guide]!.name} chat export',
+        subject:
+            'SeekNirvana ${guidePersonaDefinitions[session.guide]!.name} chat',
+      ),
+    );
+  }
+
+  String _buildTranscript(GuideChatSession session, int messageIndex) {
+    final persona = guidePersonaDefinitions[session.guide]!;
+    final lines = <String>[
+      'SeekNirvana Chat Export',
+      'Guide: ${persona.name}',
+      'Session: ${session.title}',
+      'Exported: ${DateFormat.yMMMd().add_jm().format(DateTime.now())}',
+      '',
+    ];
+
+    for (final message in session.messages.take(messageIndex + 1)) {
+      final speaker = message.fromGuide ? persona.name : 'You';
+      final text = _plainTextForExport(message.text);
+      if (text.trim().isEmpty) {
+        continue;
+      }
+      lines.add(
+        '[${DateFormat.MMMd().add_jm().format(message.timestamp)}] $speaker: $text',
+      );
+      lines.add('');
+    }
+
+    return lines.join('\n').trim();
   }
 
   @override
@@ -177,6 +296,7 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
     final session = store.currentSession;
     final selectedGuide = store.selectedGuide;
     final persona = guidePersonaDefinitions[selectedGuide]!;
+    final streamingEnabled = manager.streamingEnabled;
     final hasUserMessage =
         session?.messages.any(
           (message) => message.role == GuideChatMessageRole.user,
@@ -339,15 +459,26 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
                       ),
                     )
                   : ListView.builder(
+                      controller: _messagesScrollController,
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                       itemCount: session.messages.length,
                       itemBuilder: (context, index) {
                         final message = session.messages[index];
-                        return _ChatBubble(message: message);
+                        return _ChatBubble(
+                          message: message,
+                          guideName: persona.name,
+                          onCopy: message.text.trim().isEmpty
+                              ? null
+                              : () => _copyMessage(context, message.text),
+                          onShare: message.text.trim().isEmpty
+                              ? null
+                              : () =>
+                                    _shareChatThrough(context, session, index),
+                        );
                       },
                     ),
             ),
-            if (_isGenerating)
+            if (_isGenerating && !streamingEnabled)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
@@ -388,8 +519,7 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
                 modelReady: manager.stateFor(selectedGuide).isReady,
                 hasSession: session != null,
               ),
-              onSend: (text) =>
-                  _sendMessage(text, store, session!, selectedGuide),
+              onSend: (text) => _sendMessage(text, store, selectedGuide),
             ),
           ],
         ),
@@ -678,11 +808,22 @@ class _RuntimeDebugCard extends StatelessWidget {
 
 class _ChatBubble extends StatelessWidget {
   final GuideChatMessage message;
+  final String guideName;
+  final VoidCallback? onCopy;
+  final VoidCallback? onShare;
 
-  const _ChatBubble({required this.message});
+  const _ChatBubble({
+    required this.message,
+    required this.guideName,
+    this.onCopy,
+    this.onShare,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final isDraftGuideMessage =
+        message.fromGuide && message.text.trim().isEmpty;
+
     return Align(
       alignment: message.fromGuide
           ? Alignment.centerLeft
@@ -700,26 +841,119 @@ class _ChatBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              message.text,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(height: 1.4),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              DateFormat.jm().format(message.timestamp),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.textSecondaryDark
-                    : AppColors.textSecondaryLight,
+            if (isDraftGuideMessage)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$guideName is thinking...',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(height: 1.4),
+                  ),
+                ],
+              )
+            else
+              SelectableText.rich(
+                _messageTextSpan(
+                  context,
+                  message.text,
+                  Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4),
+                ),
               ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    DateFormat.jm().format(message.timestamp),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondaryLight,
+                    ),
+                  ),
+                ),
+                if (!isDraftGuideMessage && onCopy != null)
+                  IconButton(
+                    onPressed: onCopy,
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    tooltip: 'Copy message',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 28,
+                      minHeight: 28,
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                if (!isDraftGuideMessage && onShare != null)
+                  IconButton(
+                    onPressed: onShare,
+                    icon: const Icon(Icons.share_rounded, size: 16),
+                    tooltip: 'Share chat up to here',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 28,
+                      minHeight: 28,
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+              ],
             ),
           ],
         ),
       ),
     );
   }
+}
+
+TextSpan _messageTextSpan(
+  BuildContext context,
+  String text,
+  TextStyle? baseStyle,
+) {
+  final spans = <InlineSpan>[];
+  final matcher = RegExp(r'\*\*(.+?)\*\*');
+  var start = 0;
+
+  for (final match in matcher.allMatches(text)) {
+    if (match.start > start) {
+      spans.add(TextSpan(text: text.substring(start, match.start)));
+    }
+    final boldText = match.group(1);
+    if (boldText != null && boldText.isNotEmpty) {
+      spans.add(
+        TextSpan(
+          text: boldText,
+          style: baseStyle?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+    start = match.end;
+  }
+
+  if (start < text.length) {
+    spans.add(TextSpan(text: text.substring(start)));
+  }
+
+  if (spans.isEmpty) {
+    spans.add(TextSpan(text: text));
+  }
+
+  return TextSpan(style: baseStyle, children: spans);
+}
+
+String _plainTextForExport(String text) {
+  return text.replaceAllMapped(
+    RegExp(r'\*\*(.+?)\*\*'),
+    (match) => match.group(1) ?? '',
+  );
 }
 
 class _ComposerBar extends StatelessWidget {
@@ -1083,6 +1317,15 @@ class GuideInfoScreen extends ConsumerWidget {
               title: const Text('Runtime Debug'),
               subtitle: const Text(
                 'Show the model file, timings, and last runtime error on Luna and Nova.',
+              ),
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: manager.streamingEnabled,
+              onChanged: manager.setStreamingEnabled,
+              title: const Text('Streaming Responses'),
+              subtitle: const Text(
+                'Show replies as they arrive. Turn this off to wait for the full response and show the thinking state above the composer.',
               ),
             ),
             const SizedBox(height: 12),
