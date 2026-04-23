@@ -652,17 +652,18 @@ class _SleepTimelineCard extends StatelessWidget {
               children: sleepRecords.map((r) {
                 final sleepType = r['sleepType'] as int;
                 Color color;
+                // SDK sleep type: 1=Awake, 2=Light, 3=Deep, 4=REM
                 switch (sleepType) {
-                  case 1: color = AppColors.sleepLight; break;
-                  case 2: color = AppColors.sleepDeep; break;
-                  case 3: color = AppColors.sleepAwake; break;
+                  case 1: color = AppColors.sleepAwake; break;
+                  case 2: color = AppColors.sleepLight; break;
+                  case 3: color = AppColors.sleepDeep; break;
                   case 4: color = AppColors.sleepREM; break;
                   default: color = Colors.grey;
                 }
-                // Each record is ~5 min, height shows depth
-                final heightFactor = sleepType == 2 ? 1.0
+                // Height reflects sleep depth: Deep tallest, Awake shortest
+                final heightFactor = sleepType == 3 ? 1.0
                     : sleepType == 4 ? 0.75
-                    : sleepType == 1 ? 0.5
+                    : sleepType == 2 ? 0.5
                     : 0.2;
                 return Expanded(
                   child: Align(

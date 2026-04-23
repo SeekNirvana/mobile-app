@@ -50,10 +50,10 @@ class SleepRecord {
   
   String get stageName {
     switch (sleepType) {
-      case 1: return 'Light';
-      case 2: return 'Deep';
-      case 3: return 'Awake';
-      case 4: return 'REM';
+      case 1: return 'Awake';  // SDK: 1 = 清醒
+      case 2: return 'Light';  // SDK: 2 = 浅睡
+      case 3: return 'Deep';   // SDK: 3 = 深睡
+      case 4: return 'REM';    // SDK: 4 = 眼动期
       default: return 'Unknown';
     }
   }
@@ -211,24 +211,45 @@ class SleepLogService {
   Future<void> processNewRecords(List<Map<String, dynamic>> records) async {
     await init();
     
-    // Filter for sleep records only
-    final sleepRecords = records
-        .where((r) => (r['sleepType'] as int?) != null && (r['sleepType'] as int) > 0)
+    // Convert ALL records to SleepRecords (including sleepType=0) so that
+    // session detection sees continuous timestamps. Filtering sleepType=0
+    // before gap detection was creating artificial gaps that split sessions.
+    final allRecords = records
+        .where((r) => (r['sleepType'] as int?) != null && (r['time'] as int?) != null)
         .map((r) => SleepRecord.fromMap(r))
+        .where((r) => r.timestamp > 0)
         .toList();
 
-    if (sleepRecords.isEmpty) {
-      debugPrint('[SleepLogService] No sleep records to process');
+    if (allRecords.isEmpty) {
+      debugPrint('[SleepLogService] No records to process');
       return;
     }
 
     // Sort by timestamp
-    sleepRecords.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    allRecords.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    // Group into sessions using gap detection
-    final sessions = _detectSessions(sleepRecords);
+    // Log distribution for debugging
+    final typeCounts = <int, int>{};
+    for (final r in allRecords) {
+      typeCounts[r.sleepType] = (typeCounts[r.sleepType] ?? 0) + 1;
+    }
+    final firstDt = allRecords.first.dateTime;
+    final lastDt = allRecords.last.dateTime;
+    debugPrint('[SleepLogService] Record distribution: $typeCounts '
+        '(total=${allRecords.length}, '
+        'span=${firstDt.toLocal()} → ${lastDt.toLocal()}, '
+        'tz=${firstDt.timeZoneName}, '
+        'rawFirst=${allRecords.first.timestamp}, rawLast=${allRecords.last.timestamp})');
+    // Log first few records for timestamp debugging
+    for (int i = 0; i < allRecords.length && i < 5; i++) {
+      final r = allRecords[i];
+      debugPrint('[SleepLogService] Sample[$i]: ts=${r.timestamp} → ${r.dateTime.toLocal()} sleep=${r.sleepType} hr=${r.heartRate}');
+    }
+
+    // Group into sessions using gap detection on ALL records
+    final sessions = _detectSessions(allRecords);
     
-    debugPrint('[SleepLogService] Detected ${sessions.length} sessions from ${sleepRecords.length} records');
+    debugPrint('[SleepLogService] Detected ${sessions.length} sessions from ${allRecords.length} records');
 
     // Merge with existing sessions (avoid duplicates)
     for (final newSession in sessions) {
@@ -241,7 +262,8 @@ class SleepLogService {
     await appendRawLog(records);
   }
 
-  /// Detect sleep sessions from records using gap detection
+  /// Detect sleep sessions from records using gap detection.
+  /// Uses ALL records (including sleepType=0) to maintain timestamp continuity.
   List<SleepSession> _detectSessions(List<SleepRecord> records) {
     if (records.isEmpty) return [];
 
@@ -267,27 +289,59 @@ class SleepLogService {
     }
 
     // Convert groups to SleepSession objects
+    // Only require that the group has >= 6 sleep records (sleepType > 0)
+    // to qualify as a sleep session
     return sessionGroups
-        .where((group) => group.length >= 12) // At least 1 hour
+        .where((group) {
+          final sleepCount = group.where((r) => r.sleepType > 0).length;
+          return sleepCount >= 6; // At least ~30 min of actual sleep data
+        })
         .map((group) => _createSessionFromRecords(group))
         .toList();
   }
 
-  /// Create a SleepSession from a group of records
+  /// Create a SleepSession from a group of records.
+  /// Records may include sleepType=0 (invalid) for continuity —
+  /// only sleepType > 0 records contribute to stage durations.
   SleepSession _createSessionFromRecords(List<SleepRecord> records) {
     int light = 0, deep = 0, rem = 0, awake = 0;
 
-    for (final r in records) {
-      switch (r.sleepType) {
-        case 1: light += 5; break;
-        case 2: deep += 5; break;
-        case 3: awake += 5; break;
-        case 4: rem += 5; break;
+    // Calculate duration from actual timestamps between consecutive records
+    for (int i = 0; i < records.length; i++) {
+      // Skip sleepType=0 (invalid/not-wearing) for duration accumulation
+      if (records[i].sleepType == 0) continue;
+
+      int durationSec;
+      // Look forward to the next record for delta
+      if (i < records.length - 1) {
+        durationSec = records[i + 1].timestamp - records[i].timestamp;
+        // Cap at 15 min (900s) to handle unexpected gaps; fall back to 5 min
+        if (durationSec <= 0 || durationSec > 900) durationSec = 300;
+      } else {
+        // Last record: use the same interval as the previous gap, or 5 min
+        if (i > 0) {
+          final prevGap = records[i].timestamp - records[i - 1].timestamp;
+          durationSec = (prevGap > 0 && prevGap <= 900) ? prevGap : 300;
+        } else {
+          durationSec = 300;
+        }
+      }
+      final mins = (durationSec / 60).round();
+
+      // SDK sleep type mapping:
+      //   1 = Awake (清醒), 2 = Light (浅睡), 3 = Deep (深睡), 4 = REM (眼动期)
+      switch (records[i].sleepType) {
+        case 1: awake += mins; break;
+        case 2: light += mins; break;
+        case 3: deep  += mins; break;
+        case 4: rem   += mins; break;
       }
     }
 
-    final start = records.first.dateTime;
-    final end = records.last.dateTime;
+    // Find the first and last actual sleep records for start/end times
+    final sleepRecords = records.where((r) => r.sleepType > 0).toList();
+    final start = sleepRecords.isNotEmpty ? sleepRecords.first.dateTime : records.first.dateTime;
+    final end = sleepRecords.isNotEmpty ? sleepRecords.last.dateTime : records.last.dateTime;
     
     // Determine the "sleep date" - if sleep started before 6 AM, count as previous day
     DateTime sleepDate = start;
@@ -297,6 +351,11 @@ class SleepLogService {
     // Normalize to just the date
     sleepDate = DateTime(sleepDate.year, sleepDate.month, sleepDate.day);
 
+    debugPrint('[SleepLogService] Session: ${start.toLocal()} → ${end.toLocal()}, '
+        'light=${light}m deep=${deep}m rem=${rem}m awake=${awake}m '
+        'total=${light + deep + rem}m (${((light + deep + rem) / 60.0).toStringAsFixed(1)}h), '
+        'records=${records.length}, sleepRecords=${sleepRecords.length}');
+
     return SleepSession(
       date: sleepDate,
       sleepStart: start,
@@ -305,7 +364,7 @@ class SleepLogService {
       deepMinutes: deep,
       remMinutes: rem,
       awakeMinutes: awake,
-      records: records,
+      records: sleepRecords, // Only store sleep records for timeline display
     );
   }
 

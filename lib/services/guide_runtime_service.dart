@@ -8,6 +8,9 @@ import 'guide_model_manager.dart';
 
 /// Runtime service for on-device AI using flutter_gemma
 class GuideRuntimeService {
+  static const _iosMaxTokens = 512;
+  static const _defaultMaxTokens = 1024;
+
   InferenceModel? _currentModel;
   InferenceChat? _activeChat;
 
@@ -136,21 +139,32 @@ class GuideRuntimeService {
         Message.text(text: lastUserMessage.text, isUser: true),
       );
 
-      // Generate response progressively as text arrives from the model.
       final stopwatch = Stopwatch()..start();
-      final buffer = StringBuffer();
+      var responseText = '';
 
-      await for (final response in _activeChat!.generateChatResponseAsync()) {
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        // iOS is currently unstable in flutter_gemma's native async token stream.
+        // Use the stable sync response path and return the full response at once.
+        final response = await _activeChat!.generateChatResponse();
         if (response is! TextResponse) {
-          continue;
+          throw StateError('Unexpected response type');
         }
-        buffer.write(response.token);
-        yield buffer.toString();
+        responseText = response.token.trimRight();
+        yield responseText;
+      } else {
+        final buffer = StringBuffer();
+        await for (final response in _activeChat!.generateChatResponseAsync()) {
+          if (response is! TextResponse) {
+            continue;
+          }
+          buffer.write(response.token);
+          yield buffer.toString();
+        }
+        responseText = buffer.toString().trimRight();
       }
 
       stopwatch.stop();
       _lastGenerationDuration = stopwatch.elapsed;
-      final responseText = buffer.toString().trimRight();
 
       if (responseText.isEmpty) {
         throw StateError('No response generated from model');
@@ -193,7 +207,7 @@ class GuideRuntimeService {
     await _ensureGuideModelReady(definition);
 
     _currentModel = await FlutterGemma.getActiveModel(
-      maxTokens: 1024,
+      maxTokens: _maxTokensForCurrentPlatform(),
       preferredBackend: _preferredBackendFor(definition),
     );
     debugPrint('Loaded active model for ${definition.name}');
@@ -275,7 +289,17 @@ class GuideRuntimeService {
   }
 
   PreferredBackend _preferredBackendFor(GuidePersonaDefinition definition) {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return PreferredBackend.cpu;
+    }
     return PreferredBackend.gpu;
+  }
+
+  int _maxTokensForCurrentPlatform() {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return _iosMaxTokens;
+    }
+    return _defaultMaxTokens;
   }
 
   Future<int?> _safeCountTokens(String text) async {

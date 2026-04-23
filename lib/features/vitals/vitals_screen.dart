@@ -376,7 +376,9 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
     final isMeasuring = ref.read(bpMeasuringProvider);
     if (isMeasuring) {
       _cancelSafetyTimeout('bp');
-      RingPlugin.stopBloodPressure();
+      RingPlugin.stopBloodPressure().catchError((error) {
+        debugPrint('[VitalsScreen] Failed to stop BP measurement: $error');
+      });
       ref.read(bpMeasuringProvider.notifier).state = false;
       ref.read(ppgWaveformProvider.notifier).state = [];
     } else {
@@ -384,7 +386,19 @@ class _VitalsScreenState extends ConsumerState<VitalsScreen> {
       ref.read(bpMeasuringProvider.notifier).state = true;
       ref.read(bpProgressValueProvider.notifier).state = 0;
       ref.read(ppgWaveformProvider.notifier).state = [];
-      RingPlugin.startBloodPressure();
+      RingPlugin.startBloodPressure().catchError((error) {
+        debugPrint('[VitalsScreen] Failed to start BP measurement: $error');
+        if (!mounted) return;
+        _cancelSafetyTimeout('bp');
+        ref.read(bpMeasuringProvider.notifier).state = false;
+        ref.read(bpProgressValueProvider.notifier).state = 0;
+        ref.read(ppgWaveformProvider.notifier).state = [];
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Blood pressure scan could not start on this device.'),
+          ),
+        );
+      });
     }
   }
 

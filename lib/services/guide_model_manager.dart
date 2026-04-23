@@ -249,6 +249,41 @@ class GuideModelState {
   }
 }
 
+class GuideStorageSnapshot {
+  final String? rootPath;
+  final String? chatPath;
+  final String? chatDatabasePath;
+  final List<String> guideModelPaths;
+  final String? voicePath;
+  final String? whisperModelPath;
+  final int guideModelBytes;
+  final int voiceBytes;
+  final int whisperModelBytes;
+  final int chatBytes;
+  final int databaseBytes;
+
+  const GuideStorageSnapshot({
+    required this.rootPath,
+    required this.chatPath,
+    required this.chatDatabasePath,
+    required this.guideModelPaths,
+    required this.voicePath,
+    required this.whisperModelPath,
+    required this.guideModelBytes,
+    required this.voiceBytes,
+    required this.whisperModelBytes,
+    required this.chatBytes,
+    required this.databaseBytes,
+  });
+
+  int get totalBytes =>
+      guideModelBytes +
+      voiceBytes +
+      whisperModelBytes +
+      chatBytes +
+      databaseBytes;
+}
+
 class GuideModelManager extends ChangeNotifier {
   static const _storageDirectoryKey = 'guide_model_storage_directory_v1';
   static const _runtimeDebugEnabledKey = 'guide_runtime_debug_enabled_v1';
@@ -259,7 +294,7 @@ class GuideModelManager extends ChangeNotifier {
   String? _defaultStorageDirectoryPath;
   String? _globalError;
   bool _runtimeDebugEnabled = false;
-  bool _streamingEnabled = true;
+  bool _streamingEnabled = !Platform.isIOS;
 
   final Map<GuideKind, GuideModelState> _states = {
     for (final entry in guidePersonaDefinitions.entries)
@@ -275,11 +310,7 @@ class GuideModelManager extends ChangeNotifier {
   String? get defaultStorageDirectoryPath => _defaultStorageDirectoryPath;
 
   bool get runtimeDebugEnabled => _runtimeDebugEnabled;
-  bool get streamingEnabled => _streamingEnabled;
-
-  String? get modelDirectoryPath => _storageDirectoryPath == null
-      ? null
-      : p.join(_storageDirectoryPath!, 'models');
+  bool get streamingEnabled => Platform.isIOS ? false : _streamingEnabled;
 
   String? get chatDirectoryPath => _storageDirectoryPath == null
       ? null
@@ -310,7 +341,11 @@ class GuideModelManager extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final savedPath = prefs.getString(_storageDirectoryKey);
       _runtimeDebugEnabled = prefs.getBool(_runtimeDebugEnabledKey) ?? false;
-      _streamingEnabled = prefs.getBool(_streamingEnabledKey) ?? true;
+      final savedStreaming = prefs.getBool(_streamingEnabledKey);
+      _streamingEnabled = Platform.isIOS ? false : (savedStreaming ?? true);
+      if (Platform.isIOS && savedStreaming != false) {
+        await prefs.setBool(_streamingEnabledKey, false);
+      }
       _storageDirectoryPath = (savedPath?.trim().isNotEmpty ?? false)
           ? savedPath!.trim()
           : _defaultStorageDirectoryPath;
@@ -478,8 +513,13 @@ class GuideModelManager extends ChangeNotifier {
   Future<void> setStreamingEnabled(bool enabled) async {
     await init();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_streamingEnabledKey, enabled);
-    _streamingEnabled = enabled;
+    if (Platform.isIOS) {
+      await prefs.setBool(_streamingEnabledKey, false);
+      _streamingEnabled = false;
+    } else {
+      await prefs.setBool(_streamingEnabledKey, enabled);
+      _streamingEnabled = enabled;
+    }
     notifyListeners();
   }
 
@@ -544,6 +584,120 @@ class GuideModelManager extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  Future<GuideStorageSnapshot> loadStorageSnapshot() async {
+    await init();
+
+    final chatPath = chatDirectoryPath;
+    final databasePath = chatDatabasePath;
+    final voicePath = _storageDirectoryPath == null
+        ? null
+        : p.join(_storageDirectoryPath!, 'voice');
+    final whisperModelPath = voicePath == null
+        ? null
+        : p.join(voicePath, 'whisper');
+
+    final guideModelPaths = await _installedGuideModelPaths();
+    final guideModelBytes = await _measureUniquePathsBytes(guideModelPaths);
+    final whisperModelBytes = await _measurePathBytes(whisperModelPath);
+    final rawVoiceBytes = await _measurePathBytes(voicePath);
+    final voiceBytes = rawVoiceBytes > whisperModelBytes
+        ? rawVoiceBytes - whisperModelBytes
+        : 0;
+    final chatBytes = await _measurePathBytes(chatPath);
+    final databaseBytes = await _measureFileBytes(databasePath);
+
+    return GuideStorageSnapshot(
+      rootPath: storageDirectoryPath,
+      chatPath: chatPath,
+      chatDatabasePath: databasePath,
+      guideModelPaths: guideModelPaths,
+      voicePath: voicePath,
+      whisperModelPath: whisperModelPath,
+      guideModelBytes: guideModelBytes,
+      voiceBytes: voiceBytes,
+      whisperModelBytes: whisperModelBytes,
+      chatBytes: chatBytes,
+      databaseBytes: databaseBytes,
+    );
+  }
+
+  Future<List<String>> _installedGuideModelPaths() async {
+    final uniquePaths = <String>{};
+    for (final kind in activeGuideKinds) {
+      final path = await resolveInstalledGuideModelPath(
+        guidePersonaDefinitions[kind]!,
+      );
+      if (path != null && path.isNotEmpty) {
+        uniquePaths.add(path);
+      }
+    }
+    return uniquePaths.toList()..sort();
+  }
+
+  Future<int> _measureUniquePathsBytes(List<String> paths) async {
+    var total = 0;
+    for (final path in paths.toSet()) {
+      total += await _measurePathBytes(path);
+    }
+    return total;
+  }
+
+  Future<int> _measurePathBytes(String? path) async {
+    if (path == null || path.isEmpty) {
+      return 0;
+    }
+
+    final type = FileSystemEntity.typeSync(path, followLinks: false);
+    switch (type) {
+      case FileSystemEntityType.file:
+        return _measureFileBytes(path);
+      case FileSystemEntityType.directory:
+        final directory = Directory(path);
+        if (!await directory.exists()) {
+          return 0;
+        }
+
+        var total = 0;
+        await for (final entity in directory.list(
+          recursive: true,
+          followLinks: false,
+        )) {
+          if (entity is File) {
+            try {
+              total += await entity.length();
+            } catch (_) {
+              // Skip unreadable files while still reporting the rest of storage.
+            }
+          }
+        }
+        return total;
+      case FileSystemEntityType.notFound:
+      case FileSystemEntityType.link:
+      case FileSystemEntityType.pipe:
+      case FileSystemEntityType.unixDomainSock:
+        return 0;
+    }
+
+    return 0;
+  }
+
+  Future<int> _measureFileBytes(String? path) async {
+    if (path == null || path.isEmpty) {
+      return 0;
+    }
+
+    final file = File(path);
+    if (!await file.exists()) {
+      return 0;
+    }
+
+    try {
+      return await file.length();
+    } catch (_) {
+      return 0;
+    }
   }
 
   Future<String> _resolveDefaultStorageDirectoryPath() async {

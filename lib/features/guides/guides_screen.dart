@@ -1,14 +1,20 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:whisper_ggml_plus/whisper_ggml_plus.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/guide_chat_store.dart';
 import '../../services/guide_model_manager.dart';
 import '../../services/guide_runtime_service.dart';
+import '../../services/guide_voice_service.dart';
 
 class GuidesScreen extends ConsumerStatefulWidget {
   const GuidesScreen({super.key});
@@ -164,6 +170,7 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
     final streamingEnabled = ref
         .read(guideModelManagerProvider)
         .streamingEnabled;
+    final voiceService = ref.read(guideVoiceServiceProvider);
     String? draftMessageId;
     var latestResponse = '';
     var lastPersistAt = DateTime.now();
@@ -172,6 +179,10 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
       if (streamingEnabled) {
         draftMessageId = await store.beginGuideResponseDraft();
         _scheduleScrollToBottom();
+
+        // Track how much text has been sent to TTS for incremental speaking
+        var spokenUpTo = 0;
+        final sentenceEnd = RegExp(r'[.!?]\s+');
 
         await for (final partial in _runtimeService.streamResponse(
           guide: guide,
@@ -195,6 +206,20 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
             lastPersistAt = now;
           }
 
+          // Incremental TTS: speak completed sentences as they stream in
+          if (voiceService.voiceResponsesEnabled) {
+            final unspoken = latestResponse.substring(spokenUpTo);
+            final matches = sentenceEnd.allMatches(unspoken);
+            if (matches.isNotEmpty) {
+              final lastMatch = matches.last;
+              final speakable = unspoken.substring(0, lastMatch.end).trim();
+              if (speakable.isNotEmpty) {
+                spokenUpTo += lastMatch.end;
+                voiceService.queueSpeak(_plainTextForExport(speakable));
+              }
+            }
+          }
+
           _scheduleScrollToBottom();
         }
 
@@ -208,6 +233,14 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
             );
           }
         }
+
+        // Speak any remaining un-spoken text after streaming finishes
+        if (voiceService.voiceResponsesEnabled) {
+          final remaining = latestResponse.substring(spokenUpTo).trim();
+          if (remaining.isNotEmpty) {
+            voiceService.queueSpeak(_plainTextForExport(remaining));
+          }
+        }
       } else {
         latestResponse = await _runtimeService.generateResponse(
           guide: guide,
@@ -215,6 +248,12 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
         );
         await store.addGuideResponse(latestResponse);
         _scheduleScrollToBottom();
+
+        // Non-streaming: speak the full response at once
+        if (latestResponse.trim().isNotEmpty &&
+            voiceService.voiceResponsesEnabled) {
+          unawaited(voiceService.speak(_plainTextForExport(latestResponse)));
+        }
       }
     } catch (e, stack) {
       debugPrint('Error generating response: $e');
@@ -232,6 +271,43 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
         setState(() {
           _isGenerating = false;
         });
+      }
+    }
+  }
+
+  Future<void> _toggleVoicePrompt(BuildContext context) async {
+    final voiceService = ref.read(guideVoiceServiceProvider);
+    final store = ref.read(guideChatStoreProvider);
+    final selectedGuide = store.selectedGuide;
+
+    try {
+      if (voiceService.isRecording) {
+        final transcript = await voiceService.stopRecordingAndTranscribe();
+        if (transcript.trim().isNotEmpty) {
+          // Auto-submit the transcribed voice prompt
+          await _sendMessage(transcript.trim(), store, selectedGuide);
+        }
+      } else {
+        await voiceService.startRecording();
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
+  Future<void> _speakGuideText(BuildContext context, String text) async {
+    final voiceService = ref.read(guideVoiceServiceProvider);
+    try {
+      await voiceService.speak(_plainTextForExport(text));
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
   }
@@ -297,6 +373,7 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
     final selectedGuide = store.selectedGuide;
     final persona = guidePersonaDefinitions[selectedGuide]!;
     final streamingEnabled = manager.streamingEnabled;
+    final voiceService = ref.watch(guideVoiceServiceProvider);
     final hasUserMessage =
         session?.messages.any(
           (message) => message.role == GuideChatMessageRole.user,
@@ -467,6 +544,8 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
                         return _ChatBubble(
                           message: message,
                           guideName: persona.name,
+                          isSpeaking:
+                              message.fromGuide && voiceService.isSpeaking,
                           onCopy: message.text.trim().isEmpty
                               ? null
                               : () => _copyMessage(context, message.text),
@@ -474,6 +553,15 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
                               ? null
                               : () =>
                                     _shareChatThrough(context, session, index),
+                          onSpeak:
+                              message.fromGuide &&
+                                  message.text.trim().isNotEmpty
+                              ? () => _speakGuideText(context, message.text)
+                              : null,
+                          onStopSpeaking:
+                              message.fromGuide && voiceService.isSpeaking
+                              ? voiceService.stopSpeaking
+                              : null,
                         );
                       },
                     ),
@@ -513,12 +601,15 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
                   manager.stateFor(selectedGuide).isReady &&
                   session != null &&
                   !_isGenerating,
+              isRecording: voiceService.isRecording,
+              isTranscribing: voiceService.isTranscribing,
               guideName: persona.name,
               hintText: _composerHint(
                 selectedGuide,
                 modelReady: manager.stateFor(selectedGuide).isReady,
                 hasSession: session != null,
               ),
+              onVoicePrompt: () => _toggleVoicePrompt(context),
               onSend: (text) => _sendMessage(text, store, selectedGuide),
             ),
           ],
@@ -809,14 +900,20 @@ class _RuntimeDebugCard extends StatelessWidget {
 class _ChatBubble extends StatelessWidget {
   final GuideChatMessage message;
   final String guideName;
+  final bool isSpeaking;
   final VoidCallback? onCopy;
   final VoidCallback? onShare;
+  final VoidCallback? onSpeak;
+  final VoidCallback? onStopSpeaking;
 
   const _ChatBubble({
     required this.message,
     required this.guideName,
+    this.isSpeaking = false,
     this.onCopy,
     this.onShare,
+    this.onSpeak,
+    this.onStopSpeaking,
   });
 
   @override
@@ -860,11 +957,36 @@ class _ChatBubble extends StatelessWidget {
                 ],
               )
             else
-              SelectableText.rich(
-                _messageTextSpan(
-                  context,
-                  message.text,
-                  Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4),
+              MarkdownBody(
+                data: message.text,
+                selectable: true,
+                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                  p: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4),
+                  strong: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    height: 1.4,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  em: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    height: 1.4,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  code: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                    backgroundColor: Theme.of(context).brightness == Brightness.dark
+                        ? AppColors.cardDark
+                        : AppColors.cardLight,
+                  ),
+                  blockquote: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    height: 1.4,
+                    fontStyle: FontStyle.italic,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondaryLight,
+                  ),
+                  listBullet: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4),
+                  h1: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                  h2: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  h3: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
             const SizedBox(height: 8),
@@ -885,6 +1007,23 @@ class _ChatBubble extends StatelessWidget {
                     onPressed: onCopy,
                     icon: const Icon(Icons.copy_rounded, size: 16),
                     tooltip: 'Copy message',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 28,
+                      minHeight: 28,
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                if (!isDraftGuideMessage && onSpeak != null)
+                  IconButton(
+                    onPressed: isSpeaking ? onStopSpeaking : onSpeak,
+                    icon: Icon(
+                      isSpeaking
+                          ? Icons.stop_circle_outlined
+                          : Icons.volume_up_rounded,
+                      size: 16,
+                    ),
+                    tooltip: isSpeaking ? 'Stop speaking' : 'Speak message',
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints(
                       minWidth: 28,
@@ -913,61 +1052,52 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-TextSpan _messageTextSpan(
-  BuildContext context,
-  String text,
-  TextStyle? baseStyle,
-) {
-  final spans = <InlineSpan>[];
-  final matcher = RegExp(r'\*\*(.+?)\*\*');
-  var start = 0;
-
-  for (final match in matcher.allMatches(text)) {
-    if (match.start > start) {
-      spans.add(TextSpan(text: text.substring(start, match.start)));
-    }
-    final boldText = match.group(1);
-    if (boldText != null && boldText.isNotEmpty) {
-      spans.add(
-        TextSpan(
-          text: boldText,
-          style: baseStyle?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      );
-    }
-    start = match.end;
-  }
-
-  if (start < text.length) {
-    spans.add(TextSpan(text: text.substring(start)));
-  }
-
-  if (spans.isEmpty) {
-    spans.add(TextSpan(text: text));
-  }
-
-  return TextSpan(style: baseStyle, children: spans);
-}
 
 String _plainTextForExport(String text) {
-  return text.replaceAllMapped(
-    RegExp(r'\*\*(.+?)\*\*'),
-    (match) => match.group(1) ?? '',
-  );
+  var clean = text;
+  
+  // Remove headers
+  clean = clean.replaceAll(RegExp(r'^#+\s+', multiLine: true), '');
+  
+  // Remove links but keep text
+  clean = clean.replaceAll(RegExp(r'\[(.*?)\]\(.*?\)'), r'$1');
+  
+  // Remove bold/italics
+  clean = clean.replaceAll(RegExp(r'\*\*(.*?)\*\*'), r'$1');
+  clean = clean.replaceAll(RegExp(r'\*(.*?)\*'), r'$1');
+  clean = clean.replaceAll(RegExp(r'__(.*?)__'), r'$1');
+  clean = clean.replaceAll(RegExp(r'_(.*?)_'), r'$1');
+  
+  // Remove strikethrough
+  clean = clean.replaceAll(RegExp(r'~~(.*?)~~'), r'$1');
+  
+  // Remove inline code
+  clean = clean.replaceAll(RegExp(r'`(.*?)`'), r'$1');
+  
+  // Remove blockquotes
+  clean = clean.replaceAll(RegExp(r'^\s*>\s*', multiLine: true), '');
+  
+  return clean.trim();
 }
 
 class _ComposerBar extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
+  final bool isRecording;
+  final bool isTranscribing;
   final String guideName;
   final String hintText;
+  final VoidCallback onVoicePrompt;
   final ValueChanged<String> onSend;
 
   const _ComposerBar({
     required this.controller,
     required this.enabled,
+    required this.isRecording,
+    required this.isTranscribing,
     required this.guideName,
     required this.hintText,
+    required this.onVoicePrompt,
     required this.onSend,
   });
 
@@ -984,44 +1114,170 @@ class _ComposerBar extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.cardDark : AppColors.cardLight,
-            borderRadius: BorderRadius.circular(AppConstants.radiusXL),
-            border: Border.all(
-              color: isDark
-                  ? AppColors.cardBorderDark
-                  : AppColors.cardBorderLight,
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: 5,
-                  enabled: enabled,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _handleSend(),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    hintText: enabled ? 'Message $guideName...' : hintText,
-                  ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isRecording)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _RecordingIndicator(),
+              ),
+            if (isTranscribing)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Transcribing...',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? AppColors.textSecondaryDark
+                            : AppColors.textSecondaryLight,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: enabled ? _handleSend : null,
-                icon: const Icon(Icons.send_rounded),
-                tooltip: 'Send message',
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.cardDark : AppColors.cardLight,
+                borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+                border: Border.all(
+                  color: isRecording
+                      ? AppColors.error.withValues(alpha: 0.5)
+                      : (isDark
+                            ? AppColors.cardBorderDark
+                            : AppColors.cardBorderLight),
+                ),
               ),
-            ],
-          ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      minLines: 1,
+                      maxLines: 5,
+                      enabled: enabled && !isRecording,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _handleSend(),
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        hintText: isRecording
+                            ? 'Listening...'
+                            : (enabled ? 'Message $guideName...' : hintText),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: isTranscribing
+                        ? null
+                        : ((enabled || isRecording) ? onVoicePrompt : null),
+                    icon: isTranscribing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            isRecording
+                                ? Icons.stop_circle_rounded
+                                : Icons.mic_rounded,
+                            color: isRecording ? AppColors.error : null,
+                          ),
+                    tooltip: isTranscribing
+                        ? 'Transcribing voice prompt'
+                        : (isRecording ? 'Stop recording' : 'Record voice prompt'),
+                  ),
+                  IconButton(
+                    onPressed: enabled && !isRecording ? _handleSend : null,
+                    icon: const Icon(Icons.send_rounded),
+                    tooltip: 'Send message',
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _RecordingIndicator extends StatefulWidget {
+  @override
+  State<_RecordingIndicator> createState() => _RecordingIndicatorState();
+}
+
+class _RecordingIndicatorState extends State<_RecordingIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Opacity(
+              opacity: _animation.value,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: AppColors.error,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.error.withValues(alpha: 0.4),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Recording...',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppColors.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1299,6 +1555,7 @@ class GuideInfoScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final manager = ref.watch(guideModelManagerProvider);
     final store = ref.watch(guideChatStoreProvider);
+    final voiceService = ref.watch(guideVoiceServiceProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -1319,15 +1576,18 @@ class GuideInfoScreen extends ConsumerWidget {
                 'Show the model file, timings, and last runtime error on Luna and Nova.',
               ),
             ),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: manager.streamingEnabled,
-              onChanged: manager.setStreamingEnabled,
-              title: const Text('Streaming Responses'),
-              subtitle: const Text(
-                'Show replies as they arrive. Turn this off to wait for the full response and show the thinking state above the composer.',
+            if (!Platform.isIOS)
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: manager.streamingEnabled,
+                onChanged: manager.setStreamingEnabled,
+                title: const Text('Streaming Responses'),
+                subtitle: const Text(
+                  'Show replies as they arrive. Turn this off to wait for the full response and show the thinking state above the composer.',
+                ),
               ),
-            ),
+            const SizedBox(height: 12),
+            _GuideVoiceSettingsCard(voiceService: voiceService, isDark: isDark),
             const SizedBox(height: 12),
             for (var index = 0; index < activeGuideKinds.length; index++) ...[
               _GuideSetupCard(
@@ -1407,45 +1667,445 @@ class GuideInfoScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 16),
-            // Storage Info
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.cardDark : AppColors.cardLight,
-                borderRadius: BorderRadius.circular(AppConstants.radiusXL),
-                border: Border.all(
-                  color: isDark
-                      ? AppColors.cardBorderDark
-                      : AppColors.cardBorderLight,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Storage Info',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Chat history is stored locally in the app. AI models are downloaded on-demand using flutter_gemma.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(height: 1.4),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Models: ~1-4GB each',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
+            _GuideStorageInfoCard(manager: manager, isDark: isDark),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _GuideVoiceSettingsCard extends StatelessWidget {
+  final GuideVoiceService voiceService;
+  final bool isDark;
+
+  const _GuideVoiceSettingsCard({
+    required this.voiceService,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+        border: Border.all(
+          color: isDark ? AppColors.cardBorderDark : AppColors.cardBorderLight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Voice',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Use on-device Whisper for spoken prompts and native system voices for guide replies.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: voiceService.voiceResponsesEnabled,
+            onChanged: voiceService.setVoiceResponsesEnabled,
+            title: const Text('Speak guide replies'),
+            subtitle: const Text(
+              'Automatically read Luna and Nova responses out loud after they finish.',
+            ),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<WhisperModel>(
+            initialValue: voiceService.whisperModel,
+            decoration: const InputDecoration(
+              labelText: 'Speech recognition model',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: WhisperModel.tiny, child: Text('Tiny')),
+              DropdownMenuItem(value: WhisperModel.base, child: Text('Base')),
+              DropdownMenuItem(value: WhisperModel.small, child: Text('Small')),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                voiceService.setWhisperModel(value);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          if (voiceService.hasVoices) ...[
+            DropdownButtonFormField<String>(
+              initialValue: voiceService.selectedVoice?.stableId,
+              decoration: const InputDecoration(
+                labelText: 'Voice',
+                border: OutlineInputBorder(),
+              ),
+              items: voiceService.voices
+                  .map(
+                    (voice) => DropdownMenuItem<String>(
+                      value: voice.stableId,
+                      child: Text(voice.label, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (selectedId) {
+                final selected = voiceService.voices
+                    .cast<GuideVoiceOption?>()
+                    .firstWhere(
+                      (voice) => voice?.stableId == selectedId,
+                      orElse: () => null,
+                    );
+                voiceService.setSelectedVoice(selected);
+              },
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: voiceService.isSpeaking
+                      ? voiceService.stopSpeaking
+                      : voiceService.previewVoice,
+                  icon: Icon(
+                    voiceService.isSpeaking
+                        ? Icons.stop_rounded
+                        : Icons.play_arrow_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    voiceService.isSpeaking
+                        ? 'Stop preview'
+                        : 'Preview voice',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    voiceService.selectedVoice?.label ?? 'No voice selected',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: isDark
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondaryLight,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ] else
+            Text(
+              'No system voices are currently available to choose from on this device.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          const SizedBox(height: 12),
+          FutureBuilder<bool>(
+            future: voiceService.isWhisperModelReady(),
+            builder: (context, snapshot) {
+              final whisperReady = snapshot.data ?? false;
+              final isDownloading = voiceService.isPreparingWhisperModel;
+              final progress = voiceService.whisperDownloadProgress;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Speech model',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${voiceService.whisperModel.modelName} · ${whisperReady ? 'Downloaded' : (isDownloading ? 'Downloading…' : 'Not downloaded')}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  if (isDownloading) ...[
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(
+                      value: progress > 0 ? progress : null,
+                      minHeight: 8,
+                      borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+                      color: AppColors.primary,
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      progress > 0
+                          ? 'Downloading... ${(progress * 100).toInt()}%'
+                          : 'Starting download...',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  FutureBuilder<String>(
+                    future: voiceService.whisperModelPath(),
+                    builder: (context, pathSnapshot) {
+                      return Text(
+                        pathSnapshot.data ?? 'Preparing speech model path…',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      FilledButton.icon(
+                        onPressed: isDownloading
+                            ? null
+                            : () => voiceService.preloadWhisperModel(
+                                force: whisperReady,
+                              ),
+                        icon: isDownloading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.download_rounded),
+                        label: Text(
+                          whisperReady
+                              ? 'Redownload speech model'
+                              : 'Download speech model',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FutureBuilder<int>(
+                          future: voiceService.whisperModelBytes(),
+                          builder: (context, sizeSnapshot) {
+                            final bytes = sizeSnapshot.data ?? 0;
+                            return Text(
+                              bytes > 0
+                                  ? 'Local size: ${_GuideStorageInfoCard.formatBytes(bytes)}'
+                                  : 'Speech model not on device yet',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: voiceService.refreshVoices,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Refresh voices'),
+              ),
+              const SizedBox(width: 12),
+              if (voiceService.lastError != null &&
+                  voiceService.lastError!.isNotEmpty)
+                Expanded(
+                  child: Text(
+                    voiceService.lastError!,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppColors.error),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuideStorageInfoCard extends StatelessWidget {
+  final GuideModelManager manager;
+  final bool isDark;
+
+  const _GuideStorageInfoCard({required this.manager, required this.isDark});
+
+  static String formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var value = bytes.toDouble();
+    var unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+    final decimals = value >= 10 || unitIndex == 0 ? 0 : 1;
+    return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+        border: Border.all(
+          color: isDark ? AppColors.cardBorderDark : AppColors.cardBorderLight,
+        ),
+      ),
+      child: FutureBuilder<GuideStorageSnapshot>(
+        future: manager.loadStorageSnapshot(),
+        builder: (context, snapshot) {
+          final storage = snapshot.data;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Storage Info',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Guide chats and downloaded model files stay on this device. This shows the actual local paths and current disk usage.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              if (snapshot.connectionState == ConnectionState.waiting)
+                Text(
+                  'Calculating storage usage...',
+                  style: Theme.of(context).textTheme.bodySmall,
+                )
+              else ...[
+                _StorageInfoRow(
+                  label: 'Total used',
+                  value: storage == null
+                      ? '--'
+                      : formatBytes(storage.totalBytes),
+                ),
+                _StorageInfoRow(
+                  label: 'Guide models',
+                  value: storage == null
+                      ? '--'
+                      : formatBytes(storage.guideModelBytes),
+                ),
+                _StorageInfoRow(
+                  label: 'Voice cache',
+                  value: storage == null
+                      ? '--'
+                      : formatBytes(storage.voiceBytes),
+                ),
+                _StorageInfoRow(
+                  label: 'Whisper model',
+                  value: storage == null
+                      ? '--'
+                      : formatBytes(storage.whisperModelBytes),
+                ),
+                _StorageInfoRow(
+                  label: 'Chats',
+                  value: storage == null
+                      ? '--'
+                      : formatBytes(storage.chatBytes),
+                ),
+                _StorageInfoRow(
+                  label: 'Chat DB',
+                  value: storage == null
+                      ? '--'
+                      : formatBytes(storage.databaseBytes),
+                ),
+                const SizedBox(height: 12),
+                _StoragePathBlock(
+                  title: 'Storage root',
+                  path: storage?.rootPath,
+                ),
+                const SizedBox(height: 10),
+                _StoragePathBlock(
+                  title: 'Whisper folder',
+                  path: storage?.whisperModelPath,
+                ),
+                const SizedBox(height: 10),
+                if (storage != null && storage.guideModelPaths.isNotEmpty) ...[
+                  for (final path in storage.guideModelPaths) ...[
+                    _StoragePathBlock(title: 'Guide model bundle', path: path),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+                _StoragePathBlock(
+                  title: 'Voice cache',
+                  path: storage?.voicePath,
+                ),
+                const SizedBox(height: 10),
+                _StoragePathBlock(
+                  title: 'Chats database',
+                  path: storage?.chatDatabasePath,
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StorageInfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _StorageInfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StoragePathBlock extends StatelessWidget {
+  final String title;
+  final String? path;
+
+  const _StoragePathBlock({required this.title, required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        SelectableText(
+          path ?? 'Unavailable',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            fontFamily: 'monospace',
+            height: 1.35,
+          ),
+        ),
+      ],
     );
   }
 }

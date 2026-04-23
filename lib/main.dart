@@ -61,18 +61,18 @@ class _SeekNirvanaBootstrapState extends ConsumerState<SeekNirvanaBootstrap> {
       }),
     );
 
-    if (Platform.isIOS) {
-      debugPrint(
-        '[Main] Skipping eager ring service initialization on iOS startup.',
-      );
-      return;
-    }
-
     try {
       ref.read(ringDataServiceProvider);
     } catch (error, stackTrace) {
       debugPrint('[Main] RingDataService init failed: $error');
       debugPrint('$stackTrace');
+    }
+
+    if (Platform.isIOS) {
+      debugPrint(
+        '[Main] Skipping eager ring connection initialization on iOS startup.',
+      );
+      return;
     }
 
     try {

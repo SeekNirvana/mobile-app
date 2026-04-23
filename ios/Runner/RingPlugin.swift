@@ -785,9 +785,10 @@ import BCLRingSDK
                     self.isBloodPressureMeasuring = false
                     self.estimateBPFromHeartRateData()
                 }
-                result(nil)
             }
         }
+
+        result(nil)
     }
     
     private func stopBloodPressure(result: @escaping FlutterResult) {
@@ -830,31 +831,69 @@ import BCLRingSDK
         sendHealthData(type: "historyStart", data: [:])
         
         let callbacks = BCLDataSyncCallbacks(
-            onProgress: { [weak self] progress, total, index, model in
+            onProgress: { [weak self] totalNumber, currentIndex, progress, model in
                 DispatchQueue.main.async {
+                    // Log timestamp for debugging timezone issues
+                    if let time = model.time {
+                        let date = Date(timeIntervalSince1970: TimeInterval(time))
+                        let formatter = DateFormatter()
+                        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+                        formatter.timeZone = TimeZone.current
+                        print("[RingPlugin] Record \(currentIndex)/\(totalNumber): time=\(time) (\(formatter.string(from: date))), sleep=\(model.sleepType ?? 0)")
+                    }
+                    
                     self?.sendHealthData(type: "historyData", data: [
                         "progress": progress,
-                        "time": model.time,
-                        "heartRate": model.heartRate,
-                        "bloodOxygen": model.bloodOxygen,
-                        "hrv": model.heartRateVariability,
-                        "stress": model.stressIndex,
-                        "temperature": model.temperature,
-                        "steps": model.stepCount,
-                        "sleepType": model.sleepType,
-                        "exerciseIntensity": model.exerciseIntensity
+                        "time": model.time as Any,
+                        "heartRate": model.heartRate as Any,
+                        "bloodOxygen": model.bloodOxygen as Any,
+                        "hrv": model.heartRateVariability as Any,
+                        "stress": model.stressIndex as Any,
+                        "temperature": model.temperature as Any,
+                        "steps": model.stepCount as Any,
+                        "sleepType": model.sleepType as Any,
+                        "exerciseIntensity": model.exerciseIntensity as Any
                     ])
                 }
             },
+            onStatusChanged: { [weak self] status in
+                DispatchQueue.main.async {
+                    switch status {
+                    case .noData:
+                        print("[RingPlugin] History sync: no data")
+                        self?.sendHealthData(type: "historyComplete", data: [:])
+                    case .completed:
+                        print("[RingPlugin] History sync: completed")
+                    case .syncing:
+                        print("[RingPlugin] History sync: syncing...")
+                    case .error:
+                        print("[RingPlugin] History sync: error status")
+                    @unknown default:
+                        break
+                    }
+                }
+            },
+            onCompleted: { [weak self] models in
+                DispatchQueue.main.async {
+                    print("[RingPlugin] History sync onCompleted, \(models.count) records")
+                    self?.sendHealthData(type: "historyComplete", data: ["count": models.count])
+                }
+            },
             onError: { [weak self] error in
-                self?.sendHealthData(type: "historyError", data: ["message": error.localizedDescription])
+                DispatchQueue.main.async {
+                    self?.sendHealthData(type: "historyError", data: ["message": error.localizedDescription])
+                }
             }
         )
         
-        BCLRingManager.shared.readUnUploadData(timestamp: 0, callbacks: callbacks) { historyResult in
+        // Use readAllHistoryData instead of readUnUploadData to get the complete history
+        // readUnUploadData only returns data not yet uploaded to Yongxin's cloud server,
+        // which means previously synced records would be missing.
+        BCLRingManager.shared.readAllHistoryData(timestamp: 0, callbacks: callbacks) { historyResult in
             DispatchQueue.main.async {
                 switch historyResult {
                 case .success:
+                    print("[RingPlugin] readAllHistoryData command sent successfully")
                     result(nil)
                 case .failure(let error):
                     result(FlutterError(code: "HISTORY_ERROR", message: error.localizedDescription, details: nil))

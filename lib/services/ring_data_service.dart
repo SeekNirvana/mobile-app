@@ -201,7 +201,9 @@ class RingDataService {
           ref.read(sleepDurationProvider.notifier).state = 0.0;
           ref.read(sleepStartTimeProvider.notifier).state = null;
           ref.read(sleepEndTimeProvider.notifier).state = null;
-          debugPrint('[RingDataService] History sync started - reset counters');
+          // Clear old cached sessions so they get recalculated with correct mappings
+          sleepLogService.clearAll();
+          debugPrint('[RingDataService] History sync started - reset counters and cleared cache');
           break;
 
         case 'historyData':

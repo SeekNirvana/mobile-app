@@ -30,6 +30,10 @@
 	<string>Seek Nirvana needs Bluetooth to scan for and connect to your smart ring to track your health data (heart rate, sleep, SpO2, etc.).</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Seek Nirvana needs Bluetooth to scan for and connect to your smart ring to track your health data (heart rate, sleep, SpO2, etc.).</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Seek Nirvana needs microphone access so you can speak prompts to Luna and Nova.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Seek Nirvana uses speech recognition to help turn your voice prompts into text.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
