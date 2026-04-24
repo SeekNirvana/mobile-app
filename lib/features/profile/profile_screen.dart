@@ -10,6 +10,7 @@ import '../../plugins/ring_sdk/models/ring_connection_state.dart';
 import '../../services/feature_detection_service.dart';
 import '../../services/guide_model_manager.dart';
 import '../../services/profile_preferences_service.dart';
+import '../../shared/widgets/brand_seal.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -35,283 +36,296 @@ class ProfileScreen extends ConsumerWidget {
     });
 
     return Scaffold(
-      backgroundColor: isDark
-          ? AppColors.backgroundDark
-          : AppColors.backgroundLight,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-          children: [
-            Text(
-              'Profile',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Shape your setup for sleep, private AI, and a calmer daily rhythm.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: isDark
-                    ? AppColors.textSecondaryDark
-                    : AppColors.textSecondaryLight,
+      body: Container(
+        decoration: BoxDecoration(gradient: AppColors.screenGradient(isDark)),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 132),
+            children: [
+              Text(
+                'Profile',
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-
-            _ProfileHeroCard(
-              displayName: profilePreferences.displayName,
-              profileSummary: profilePreferences.profileSummary,
-              connectionState: connectionState.label,
-              battery: battery,
-              guideReady: guideModelManager.allModelsReady,
-              notificationsEnabled: profilePreferences.notificationsEnabled,
-              onEditProfile: () =>
-                  _showProfileSettings(context, profilePreferences),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _ProfileMetricTile(
-                    icon: Icons.height_rounded,
-                    label: 'Height',
-                    value: '${profilePreferences.heightCm} cm',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _ProfileMetricTile(
-                    icon: Icons.monitor_weight_rounded,
-                    label: 'Weight',
-                    value: '${profilePreferences.weightKg} kg',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _ProfileMetricTile(
-                    icon: Icons.flag_rounded,
-                    label: 'Step Goal',
-                    value: profilePreferences.stepGoal.toString(),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            _SectionCard(
-              title: 'Device Snapshot',
-              subtitle:
-                  'Your ring connection, firmware, and core sync details at a glance.',
-              child: Column(
+              const SizedBox(height: 6),
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      if (device != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(
-                              AppConstants.radiusFull,
-                            ),
-                          ),
-                          child: Text(
-                            device.name,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.refresh_rounded, size: 20),
-                        onPressed: () {
-                          RingPlugin.getVersion();
-                          RingPlugin.getBattery();
-                        },
-                        tooltip: 'Refresh ring info',
+                  BrandSeal(
+                    size: 42,
+                    isDark: isDark,
+                    padding: 2,
+                    showHalo: false,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Shape your setup for sleep, private AI, and a calmer daily rhythm.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: isDark
+                            ? AppColors.textSecondaryDark
+                            : AppColors.textSecondaryLight,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  _InfoRow(
-                    label: 'Status',
-                    value: connectionState.label,
-                    icon: Icons.bluetooth_rounded,
-                  ),
-                  const Divider(height: 18),
-                  _InfoRow(
-                    label: 'Battery',
-                    value: battery > 0 ? '$battery%' : '--',
-                    icon: Icons.battery_std_rounded,
-                  ),
-                  const Divider(height: 18),
-                  _InfoRow(
-                    label: 'Firmware',
-                    value: firmware.isNotEmpty ? firmware : '--',
-                    icon: Icons.system_update_rounded,
-                  ),
-                  if (device != null) ...[
-                    const Divider(height: 18),
-                    _InfoRow(
-                      label: 'Signal',
-                      value: '${device.rssi} dBm',
-                      icon: Icons.signal_cellular_alt_rounded,
-                    ),
-                    const Divider(height: 18),
-                    _InfoRow(
-                      label: 'MAC',
-                      value: device.macAddress,
-                      icon: Icons.fingerprint_rounded,
-                    ),
-                  ],
-                  const Divider(height: 22),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: FilledButton.tonalIcon(
-                      onPressed: () => context.push('/capabilities'),
-                      icon: const Icon(Icons.tune_rounded),
-                      label: const Text('View Capabilities'),
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-            // Extended Features (HID, etc.)
-            if (FeatureDetectionService.hasExtendedFeatures)
-              _SectionCard(
-                title: 'Ring Features',
-                subtitle:
-                    'The controls already supported by this build, plus the hardware features that are still being wired up.',
-                child: Column(
-                  children: [
-                    // HID Settings (if supported)
-                    if (FeatureDetectionService.supportsAnyHID) ...[
-                      _SettingTile(
-                        icon: Icons.touch_app_rounded,
-                        label: 'Gesture Control (HID)',
-                        subtitle:
-                            '${FeatureDetectionService.supportedTouchFeatures.length + FeatureDetectionService.supportedGestureFeatures.length} features available',
-                        onTap: () => _showHIDSettings(context),
-                      ),
-                      const Divider(height: 24),
-                    ],
-
-                    // Vibration/Alarm settings (if supported)
-                    if (FeatureDetectionService.supportsVibration) ...[
-                      _SettingTile(
-                        icon: Icons.vibration_rounded,
-                        label: 'Vibration & Alarms',
-                        subtitle: 'Set custom vibrations',
-                        onTap: () => _showVibrationSettings(context),
-                      ),
-                      const Divider(height: 24),
-                    ],
-
-                    // Sport Mode (if supported)
-                    if (FeatureDetectionService.supportsSportMode) ...[
-                      _SettingTile(
-                        icon: Icons.directions_run_rounded,
-                        label: 'Sport Mode',
-                        subtitle: 'Track your workouts',
-                        onTap: null,
-                        trailingLabel: 'Soon',
-                      ),
-                      const Divider(height: 24),
-                    ],
-
-                    if (FeatureDetectionService.supportsECG) ...[
-                      _SettingTile(
-                        icon: Icons.monitor_heart_rounded,
-                        label: 'ECG Recording',
-                        subtitle: 'Record electrocardiogram',
-                        onTap: null,
-                        trailingLabel: 'Soon',
-                      ),
-                      const Divider(height: 24),
-                    ],
-
-                    if (FeatureDetectionService.supportsVoiceRecording) ...[
-                      _SettingTile(
-                        icon: Icons.mic_rounded,
-                        label: 'Voice Recording',
-                        subtitle: 'Record audio memos',
-                        onTap: null,
-                        trailingLabel: 'Soon',
-                      ),
-                      const Divider(height: 24),
-                    ],
-
-                    _CapabilitySummary(),
-                  ],
-                ),
+              _ProfileHeroCard(
+                displayName: profilePreferences.displayName,
+                profileSummary: profilePreferences.profileSummary,
+                connectionState: connectionState.label,
+                battery: battery,
+                guideReady: guideModelManager.allModelsReady,
+                notificationsEnabled: profilePreferences.notificationsEnabled,
+                onEditProfile: () =>
+                    _showProfileSettings(context, profilePreferences),
               ),
-            if (FeatureDetectionService.hasExtendedFeatures)
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ProfileMetricTile(
+                      icon: Icons.height_rounded,
+                      label: 'Height',
+                      value: '${profilePreferences.heightCm} cm',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ProfileMetricTile(
+                      icon: Icons.monitor_weight_rounded,
+                      label: 'Weight',
+                      value: '${profilePreferences.weightKg} kg',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ProfileMetricTile(
+                      icon: Icons.flag_rounded,
+                      label: 'Step Goal',
+                      value: profilePreferences.stepGoal.toString(),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
 
-            _SectionCard(
-              title: 'Preferences',
-              subtitle:
-                  'Everything personal to your experience, from reminders to local AI storage.',
-              child: Column(
-                children: [
-                  _SwitchSettingRow(
-                    icon: Icons.notifications_rounded,
-                    label: 'Notifications',
-                    subtitle: 'Daily reminders and gentle nudges',
-                    value: profilePreferences.notificationsEnabled,
-                    onChanged: profilePreferences.setNotificationsEnabled,
-                  ),
-                  const Divider(height: 24),
-                  _SwitchSettingRow(
-                    icon: Icons.dark_mode_rounded,
-                    label: 'Dark Mode',
-                    subtitle: 'Use the darker interface throughout the app',
-                    value: themeMode == ThemeMode.dark,
-                    onChanged: (val) {
-                      ref.read(themeModeProvider.notifier).state = val
-                          ? ThemeMode.dark
-                          : ThemeMode.light;
-                    },
-                  ),
-                  const Divider(height: 24),
-                  _SettingTile(
-                    icon: Icons.folder_rounded,
-                    label: 'Local AI Storage',
-                    subtitle:
-                        guideModelManager.storageDirectoryPath ??
-                        'Loading local folder...',
-                    onTap: () =>
-                        _showModelStorageSettings(context, guideModelManager),
-                  ),
-                  const Divider(height: 24),
-                  _SettingTile(
-                    icon: Icons.info_outline_rounded,
-                    label: 'About SeekNirvana',
-                    subtitle:
-                        'Mission, privacy, hardware, and the path from attention to intention',
-                    onTap: () => context.push('/about'),
-                  ),
-                ],
+              _SectionCard(
+                title: 'Device Snapshot',
+                subtitle:
+                    'Your ring connection, firmware, and core sync details at a glance.',
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        if (device != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(
+                                AppConstants.radiusFull,
+                              ),
+                            ),
+                            child: Text(
+                              device.name,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.refresh_rounded, size: 20),
+                          onPressed: () {
+                            RingPlugin.getVersion();
+                            RingPlugin.getBattery();
+                          },
+                          tooltip: 'Refresh ring info',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _InfoRow(
+                      label: 'Status',
+                      value: connectionState.label,
+                      icon: Icons.bluetooth_rounded,
+                    ),
+                    const Divider(height: 18),
+                    _InfoRow(
+                      label: 'Battery',
+                      value: battery > 0 ? '$battery%' : '--',
+                      icon: Icons.battery_std_rounded,
+                    ),
+                    const Divider(height: 18),
+                    _InfoRow(
+                      label: 'Firmware',
+                      value: firmware.isNotEmpty ? firmware : '--',
+                      icon: Icons.system_update_rounded,
+                    ),
+                    if (device != null) ...[
+                      const Divider(height: 18),
+                      _InfoRow(
+                        label: 'Signal',
+                        value: '${device.rssi} dBm',
+                        icon: Icons.signal_cellular_alt_rounded,
+                      ),
+                      const Divider(height: 18),
+                      _InfoRow(
+                        label: 'MAC',
+                        value: device.macAddress,
+                        icon: Icons.fingerprint_rounded,
+                      ),
+                    ],
+                    const Divider(height: 22),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => context.push('/capabilities'),
+                        icon: const Icon(Icons.tune_rounded),
+                        label: const Text('View Capabilities'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-            Text(
-              'SeekNirvana v0.1.0',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-            const SizedBox(height: 12),
-          ],
+              // Extended Features (HID, etc.)
+              if (FeatureDetectionService.hasExtendedFeatures)
+                _SectionCard(
+                  title: 'Ring Features',
+                  subtitle:
+                      'The controls already supported by this build, plus the hardware features that are still being wired up.',
+                  child: Column(
+                    children: [
+                      // HID Settings (if supported)
+                      if (FeatureDetectionService.supportsAnyHID) ...[
+                        _SettingTile(
+                          icon: Icons.touch_app_rounded,
+                          label: 'Gesture Control (HID)',
+                          subtitle:
+                              '${FeatureDetectionService.supportedTouchFeatures.length + FeatureDetectionService.supportedGestureFeatures.length} features available',
+                          onTap: () => _showHIDSettings(context),
+                        ),
+                        const Divider(height: 24),
+                      ],
+
+                      // Vibration/Alarm settings (if supported)
+                      if (FeatureDetectionService.supportsVibration) ...[
+                        _SettingTile(
+                          icon: Icons.vibration_rounded,
+                          label: 'Vibration & Alarms',
+                          subtitle: 'Set custom vibrations',
+                          onTap: () => _showVibrationSettings(context),
+                        ),
+                        const Divider(height: 24),
+                      ],
+
+                      // Sport Mode (if supported)
+                      if (FeatureDetectionService.supportsSportMode) ...[
+                        _SettingTile(
+                          icon: Icons.directions_run_rounded,
+                          label: 'Sport Mode',
+                          subtitle: 'Track your workouts',
+                          onTap: null,
+                          trailingLabel: 'Soon',
+                        ),
+                        const Divider(height: 24),
+                      ],
+
+                      if (FeatureDetectionService.supportsECG) ...[
+                        _SettingTile(
+                          icon: Icons.monitor_heart_rounded,
+                          label: 'ECG Recording',
+                          subtitle: 'Record electrocardiogram',
+                          onTap: null,
+                          trailingLabel: 'Soon',
+                        ),
+                        const Divider(height: 24),
+                      ],
+
+                      if (FeatureDetectionService.supportsVoiceRecording) ...[
+                        _SettingTile(
+                          icon: Icons.mic_rounded,
+                          label: 'Voice Recording',
+                          subtitle: 'Record audio memos',
+                          onTap: null,
+                          trailingLabel: 'Soon',
+                        ),
+                        const Divider(height: 24),
+                      ],
+
+                      _CapabilitySummary(),
+                    ],
+                  ),
+                ),
+              if (FeatureDetectionService.hasExtendedFeatures)
+                const SizedBox(height: 16),
+
+              _SectionCard(
+                title: 'Preferences',
+                subtitle:
+                    'Everything personal to your experience, from reminders to local AI storage.',
+                child: Column(
+                  children: [
+                    _SwitchSettingRow(
+                      icon: Icons.notifications_rounded,
+                      label: 'Notifications',
+                      subtitle: 'Daily reminders and gentle nudges',
+                      value: profilePreferences.notificationsEnabled,
+                      onChanged: profilePreferences.setNotificationsEnabled,
+                    ),
+                    const Divider(height: 24),
+                    _SwitchSettingRow(
+                      icon: Icons.dark_mode_rounded,
+                      label: 'Dark Mode',
+                      subtitle: 'Use the darker interface throughout the app',
+                      value: themeMode == ThemeMode.dark,
+                      onChanged: (val) {
+                        ref.read(themeModeProvider.notifier).state = val
+                            ? ThemeMode.dark
+                            : ThemeMode.light;
+                      },
+                    ),
+                    const Divider(height: 24),
+                    _SettingTile(
+                      icon: Icons.folder_rounded,
+                      label: 'Local AI Storage',
+                      subtitle:
+                          guideModelManager.storageDirectoryPath ??
+                          'Loading local folder...',
+                      onTap: () =>
+                          _showModelStorageSettings(context, guideModelManager),
+                    ),
+                    const Divider(height: 24),
+                    _SettingTile(
+                      icon: Icons.info_outline_rounded,
+                      label: 'About SeekNirvana',
+                      subtitle:
+                          'Mission, privacy, hardware, and the path from attention to intention',
+                      onTap: () => context.push('/about'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              Text(
+                'SeekNirvana v0.1.0',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );
@@ -365,18 +379,11 @@ class _ProfileHeroCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  color: Colors.white,
-                  size: 30,
-                ),
+              const BrandSeal(
+                size: 58,
+                isDark: true,
+                padding: 3,
+                showHalo: false,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -784,6 +791,7 @@ extension on ProfileScreen {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
@@ -791,7 +799,10 @@ extension on ProfileScreen {
           padding: EdgeInsets.only(
             left: 16,
             right: 16,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+            bottom:
+                MediaQuery.of(sheetContext).viewInsets.bottom +
+                MediaQuery.of(sheetContext).padding.bottom +
+                24,
             top: 24,
           ),
           child: Container(

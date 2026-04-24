@@ -6,11 +6,7 @@ class ConnectionIndicator extends StatefulWidget {
   final RingConnectionState state;
   final VoidCallback? onTap;
 
-  const ConnectionIndicator({
-    super.key,
-    required this.state,
-    this.onTap,
-  });
+  const ConnectionIndicator({super.key, required this.state, this.onTap});
 
   @override
   State<ConnectionIndicator> createState() => _ConnectionIndicatorState();
@@ -61,53 +57,67 @@ class _ConnectionIndicatorState extends State<ConnectionIndicator>
     }
   }
 
+  IconData get _icon {
+    switch (widget.state) {
+      case RingConnectionState.connected:
+      case RingConnectionState.bound:
+        return Icons.bluetooth_connected_rounded;
+      case RingConnectionState.scanning:
+        return Icons.bluetooth_searching_rounded;
+      case RingConnectionState.connecting:
+        return Icons.sync_rounded;
+      default:
+        return Icons.bluetooth_disabled_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: _dotColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _dotColor.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) {
-                return Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _dotColor.withValues(
-                      alpha: widget.state.isActive
-                          ? 0.5 + 0.5 * _controller.value
-                          : 1.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _dotColor.withValues(alpha: 0.4),
-                        blurRadius: 6,
+    return Tooltip(
+      message: widget.state.label,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: _dotColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _dotColor.withValues(alpha: 0.28)),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(_icon, color: _dotColor, size: 20),
+              Positioned(
+                right: 9,
+                top: 9,
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _dotColor.withValues(
+                          alpha: widget.state.isActive
+                              ? 0.55 + 0.45 * _controller.value
+                              : 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _dotColor.withValues(alpha: 0.38),
+                            blurRadius: 6,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(width: 6),
-            Text(
-              widget.state.label,
-              style: TextStyle(
-                color: _dotColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

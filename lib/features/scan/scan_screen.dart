@@ -26,7 +26,8 @@ class ScanScreen extends ConsumerStatefulWidget {
   ConsumerState<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProviderStateMixin {
+class _ScanScreenState extends ConsumerState<ScanScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   BluetoothPermissionState _permissionState = BluetoothPermissionState.checking;
   String? _permissionErrorMessage;
@@ -34,21 +35,52 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
-    
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+
     // Check permissions and Bluetooth state on init
-    if (ref.read(ringConnectionStateProvider) != RingConnectionState.connected) {
+    if (ref.read(ringConnectionStateProvider) !=
+        RingConnectionState.connected) {
       _checkPermissionsAndBluetooth();
     } else {
       setState(() => _permissionState = BluetoothPermissionState.granted);
     }
   }
 
+  String _deviceTitle(ScannedDevice? device) {
+    if (device == null) return 'Nirvana Ring';
+    final trimmed = device.name.trim();
+    return trimmed.isEmpty || trimmed.toLowerCase() == 'unknown'
+        ? 'Nirvana Ring'
+        : trimmed;
+  }
+
+  String _deviceShortId(ScannedDevice? device) {
+    final mac = device?.macAddress ?? '';
+    if (mac.isEmpty) return 'Ring nearby';
+    final compact = mac.replaceAll(':', '');
+    final suffix = compact.length >= 4
+        ? compact.substring(compact.length - 4)
+        : compact;
+    return 'ID • ${suffix.toUpperCase()}';
+  }
+
+  String _signalLabel(ScannedDevice device) {
+    if (device.rssi >= -55) return 'Excellent';
+    if (device.rssi >= -67) return 'Strong';
+    if (device.rssi >= -78) return 'Good';
+    if (device.rssi >= -88) return 'Weak';
+    return 'Far';
+  }
+
   /// Check if Bluetooth is enabled
   Future<bool> _isBluetoothEnabled() async {
     try {
-      final result = await const MethodChannel('com.seeknirvana.app/ring')
-          .invokeMethod<bool>('isBluetoothEnabled');
+      final result = await const MethodChannel(
+        'com.seeknirvana.app/ring',
+      ).invokeMethod<bool>('isBluetoothEnabled');
       return result ?? false;
     } catch (e) {
       // If method doesn't exist, assume Bluetooth is on (backwards compatibility)
@@ -59,8 +91,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
   /// Request to enable Bluetooth
   Future<void> _requestEnableBluetooth() async {
     try {
-      await const MethodChannel('com.seeknirvana.app/ring')
-          .invokeMethod('requestEnableBluetooth');
+      await const MethodChannel(
+        'com.seeknirvana.app/ring',
+      ).invokeMethod('requestEnableBluetooth');
     } catch (e) {
       // Method might not exist, show settings dialog instead
       if (mounted) {
@@ -72,8 +105,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
   /// Request Bluetooth permission on iOS (triggers the permission dialog)
   Future<String> _requestBluetoothPermissionIOS() async {
     try {
-      final result = await const MethodChannel('com.seeknirvana.app/ring')
-          .invokeMethod<String>('requestBluetoothPermission');
+      final result = await const MethodChannel(
+        'com.seeknirvana.app/ring',
+      ).invokeMethod<String>('requestBluetoothPermission');
       return result ?? 'unknown';
     } catch (e) {
       return 'unknown';
@@ -91,14 +125,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
     // permission_handler package doesn't properly map to CoreBluetooth on iOS
     if (Platform.isIOS) {
       final iosPermissionStatus = await _requestBluetoothPermissionIOS();
-      if (iosPermissionStatus == 'denied' || iosPermissionStatus == 'restricted') {
+      if (iosPermissionStatus == 'denied' ||
+          iosPermissionStatus == 'restricted') {
         setState(() {
           _permissionState = BluetoothPermissionState.permanentlyDenied;
-          _permissionErrorMessage = 'Bluetooth permission is denied. Please enable it in iOS Settings > Seek Nirvana.';
+          _permissionErrorMessage =
+              'Bluetooth permission is denied. Please enable it in iOS Settings > Seek Nirvana.';
         });
         return;
       }
-      
+
       // On iOS, if native permission is granted, check if Bluetooth is enabled
       final isBluetoothOn = await _isBluetoothEnabled();
       if (!isBluetoothOn) {
@@ -107,7 +143,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
         });
         return;
       }
-      
+
       // iOS permission granted and Bluetooth is on - proceed with scan
       setState(() => _permissionState = BluetoothPermissionState.granted);
       _startRealScan();
@@ -143,7 +179,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
 
     // Request permissions that are not granted
     final permissionsToRequestList = permissionsToRequest
-        .where((p) => !currentStatuses[p]!.isGranted && !currentStatuses[p]!.isLimited)
+        .where(
+          (p) =>
+              !currentStatuses[p]!.isGranted && !currentStatuses[p]!.isLimited,
+        )
         .toList();
 
     Map<Permission, PermissionStatus> statuses = {};
@@ -169,16 +208,20 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
       _startRealScan();
     } else {
       // Check if any permission is permanently denied
-      final anyPermanentlyDenied = statuses.values.any((s) => s.isPermanentlyDenied);
+      final anyPermanentlyDenied = statuses.values.any(
+        (s) => s.isPermanentlyDenied,
+      );
       if (anyPermanentlyDenied) {
         setState(() {
           _permissionState = BluetoothPermissionState.permanentlyDenied;
-          _permissionErrorMessage = 'Bluetooth permissions are permanently denied. Please enable them in app settings.';
+          _permissionErrorMessage =
+              'Bluetooth permissions are permanently denied. Please enable them in app settings.';
         });
       } else {
         setState(() {
           _permissionState = BluetoothPermissionState.denied;
-          _permissionErrorMessage = 'Bluetooth permissions are required to scan for your ring.';
+          _permissionErrorMessage =
+              'Bluetooth permissions are required to scan for your ring.';
         });
       }
     }
@@ -216,10 +259,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
   }
 
   void _startRealScan() {
-    if (ref.read(ringConnectionStateProvider) == RingConnectionState.connected) return;
+    if (ref.read(ringConnectionStateProvider) ==
+        RingConnectionState.connected) {
+      return;
+    }
 
     ref.read(isScanningProvider.notifier).state = true;
-    ref.read(ringConnectionStateProvider.notifier).state = RingConnectionState.scanning;
+    ref.read(ringConnectionStateProvider.notifier).state =
+        RingConnectionState.scanning;
     ref.read(scannedDevicesProvider.notifier).state = [];
 
     // Listen to scan results from native
@@ -253,7 +300,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
     RingPlugin.stopScan();
     ref.read(isScanningProvider.notifier).state = false;
     if (ref.read(ringConnectionStateProvider) == RingConnectionState.scanning) {
-      ref.read(ringConnectionStateProvider.notifier).state = RingConnectionState.disconnected;
+      ref.read(ringConnectionStateProvider.notifier).state =
+          RingConnectionState.disconnected;
     }
   }
 
@@ -284,20 +332,21 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
       appBar: AppBar(
         title: const Text('Find Your Ring'),
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded), 
+          icon: const Icon(Icons.close_rounded),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           if (connectionState == RingConnectionState.connected)
             IconButton(
-              icon: const Icon(Icons.link_off_rounded, color: Colors.redAccent), 
+              icon: const Icon(Icons.link_off_rounded, color: Colors.redAccent),
               onPressed: _disconnect,
               tooltip: 'Disconnect',
             )
-          else if (_permissionState == BluetoothPermissionState.granted && !isScanning && 
-                   connectionState != RingConnectionState.connecting)
+          else if (_permissionState == BluetoothPermissionState.granted &&
+              !isScanning &&
+              connectionState != RingConnectionState.connecting)
             IconButton(
-              icon: const Icon(Icons.refresh_rounded), 
+              icon: const Icon(Icons.refresh_rounded),
               onPressed: _checkPermissionsAndBluetooth,
             ),
         ],
@@ -336,19 +385,22 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
       }
     }
 
+    // Connected — show connected card only, no device list
+    if (connectionState == RingConnectionState.connected) {
+      return _buildConnectedView(connectedDevice, isDark);
+    }
+
     return Column(
       children: [
-        // Scan animation or Connected State
+        // Scan animation or idle/connecting state
         SizedBox(
           height: 200,
           child: Center(
-            child: connectionState == RingConnectionState.connected
-                ? _buildConnectedView(connectedDevice)
-                : isScanning
-                    ? _buildScanningView()
-                    : connectionState == RingConnectionState.connecting
-                      ? _buildConnectingView()
-                      : _buildIdleView(devices),
+            child: isScanning
+                ? _buildScanningView()
+                : connectionState == RingConnectionState.connecting
+                ? _buildConnectingView()
+                : _buildIdleView(devices),
           ),
         ),
 
@@ -363,27 +415,63 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
             ),
           ),
 
+        // Nearby rings list
+        if (devices.isNotEmpty || !isScanning)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            child: Row(
+              children: [
+                Text(
+                  devices.isEmpty
+                      ? 'No rings found'
+                      : '${devices.length} ring${devices.length == 1 ? '' : 's'} nearby',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: isDark
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondaryLight,
+                  ),
+                ),
+                const Spacer(),
+                if (!isScanning &&
+                    connectionState != RingConnectionState.connecting)
+                  TextButton.icon(
+                    onPressed: _checkPermissionsAndBluetooth,
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Rescan'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
         // Device list
         Expanded(
-          child: devices.isEmpty && !isScanning
-            ? Center(
-                child: Text(
-                  'No rings found.\nTap refresh to scan again.', 
-                  textAlign: TextAlign.center, 
-                  style: Theme.of(context).textTheme.bodySmall,
+          child: devices.isEmpty
+              ? Center(
+                  child: Text(
+                    'Tap Rescan to search again.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                  itemCount: devices.length,
+                  itemBuilder: (ctx, i) => _DeviceTile(
+                    device: devices[i],
+                    isDark: isDark,
+                    isConnecting:
+                        connectionState == RingConnectionState.connecting &&
+                        ref.read(connectedDeviceProvider)?.macAddress ==
+                            devices[i].macAddress,
+                    onTap: () => _connectDevice(devices[i]),
+                  ),
                 ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: devices.length,
-                itemBuilder: (ctx, i) => _DeviceTile(
-                  device: devices[i],
-                  isDark: isDark,
-                  isConnecting: connectionState == RingConnectionState.connecting && 
-                               ref.read(connectedDeviceProvider)?.macAddress == devices[i].macAddress,
-                  onTap: () => _connectDevice(devices[i]),
-                ),
-              ),
         ),
       ],
     );
@@ -397,7 +485,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
           SizedBox(
             width: 60,
             height: 60,
-            child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 3),
+            child: CircularProgressIndicator(
+              color: AppColors.primary,
+              strokeWidth: 3,
+            ),
           ),
           const SizedBox(height: 16),
           Text(
@@ -413,7 +504,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
     // iOS cannot programmatically enable Bluetooth
     // Users must go to Control Center or Settings
     final isIOS = Platform.isIOS;
-    
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -428,8 +519,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
                 color: Colors.orange.withValues(alpha: 0.1),
               ),
               child: const Icon(
-                Icons.bluetooth_disabled_rounded, 
-                color: Colors.orange, 
+                Icons.bluetooth_disabled_rounded,
+                color: Colors.orange,
                 size: 40,
               ),
             ),
@@ -442,8 +533,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
             const SizedBox(height: 8),
             Text(
               isIOS
-                ? 'Please enable Bluetooth in Control Center or Settings to scan for your ring.'
-                : 'Please turn on Bluetooth to scan for your ring.',
+                  ? 'Please enable Bluetooth in Control Center or Settings to scan for your ring.'
+                  : 'Please turn on Bluetooth to scan for your ring.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),
@@ -510,8 +601,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
                 color: Colors.red.withValues(alpha: 0.1),
               ),
               child: const Icon(
-                Icons.perm_device_information_rounded, 
-                color: Colors.redAccent, 
+                Icons.perm_device_information_rounded,
+                color: Colors.redAccent,
                 size: 40,
               ),
             ),
@@ -523,7 +614,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
             ),
             const SizedBox(height: 8),
             Text(
-              _permissionErrorMessage ?? 'Bluetooth permissions are required to scan for your ring.',
+              _permissionErrorMessage ??
+                  'Bluetooth permissions are required to scan for your ring.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),
@@ -548,38 +640,172 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildConnectedView(ScannedDevice? connectedDevice) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle, 
-            color: Colors.green.withValues(alpha: 0.2),
-          ),
-          child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 40),
+  Widget _buildConnectedView(ScannedDevice? connectedDevice, bool isDark) {
+    final device = connectedDevice;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 24),
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.green.withValues(alpha: 0.28),
+                    AppColors.cyanHint.withValues(alpha: 0.14),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.connected,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Connected',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppColors.connected,
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Device info card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.cardDark : Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: AppColors.connected.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.connected.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.bluetooth_connected_rounded,
+                          color: AppColors.connected,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _deviceTitle(device),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _deviceShortId(device),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: isDark
+                                        ? AppColors.textSecondaryDark
+                                        : AppColors.textSecondaryLight,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Signal bars
+                      if (device != null)
+                        Row(
+                          children: List.generate(
+                            4,
+                            (i) => Container(
+                              width: 4,
+                              height: 10 + i * 3.0,
+                              margin: const EdgeInsets.only(left: 2),
+                              decoration: BoxDecoration(
+                                color: i < device.signalBars
+                                    ? AppColors.connected
+                                    : (isDark
+                                        ? AppColors.cardBorderDark
+                                        : AppColors.cardBorderLight),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (device != null) ...[
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        _DeviceMiniChip(
+                          icon: Icons.network_cell_rounded,
+                          label:
+                              '${_signalLabel(device)} · ${device.rssi} dBm',
+                        ),
+                        if (device.isBonded) ...[
+                          const SizedBox(width: 8),
+                          const _DeviceMiniChip(
+                            icon: Icons.verified_rounded,
+                            label: 'Paired',
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Disconnect button — prominent
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _disconnect,
+                icon: const Icon(Icons.link_off_rounded),
+                label: const Text('Disconnect'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                  side: const BorderSide(color: Colors.redAccent),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        Text(
-          'Connected to ${connectedDevice?.name ?? "Ring"}',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        Text(
-          connectedDevice?.macAddress ?? "",
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildScanningView() {
     return AnimatedBuilder(
-      animation: _pulseController, 
+      animation: _pulseController,
       builder: (ctx, _) {
         return Stack(
-          alignment: Alignment.center, 
+          alignment: Alignment.center,
           children: [
             for (int i = 0; i < 3; i++)
               Container(
@@ -588,7 +814,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.3 - i * 0.08), 
+                    color: AppColors.primary.withValues(alpha: 0.3 - i * 0.08),
                     width: 2,
                   ),
                 ),
@@ -597,12 +823,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
               width: 70,
               height: 70,
               decoration: BoxDecoration(
-                shape: BoxShape.circle, 
+                shape: BoxShape.circle,
                 color: AppColors.primary.withValues(alpha: 0.15),
               ),
               child: const Icon(
-                Icons.bluetooth_searching_rounded, 
-                color: AppColors.primary, 
+                Icons.bluetooth_searching_rounded,
+                color: AppColors.primary,
                 size: 32,
               ),
             ),
@@ -620,7 +846,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
           width: 60,
           height: 60,
           child: CircularProgressIndicator(
-            color: AppColors.primary, 
+            color: AppColors.primary,
             strokeWidth: 3,
           ),
         ),
@@ -641,14 +867,20 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
           width: 70,
           height: 70,
           decoration: BoxDecoration(
-            shape: BoxShape.circle, 
+            shape: BoxShape.circle,
             color: AppColors.primary.withValues(alpha: 0.1),
           ),
-          child: const Icon(Icons.bluetooth_rounded, color: AppColors.primary, size: 32),
+          child: const Icon(
+            Icons.bluetooth_rounded,
+            color: AppColors.primary,
+            size: 32,
+          ),
         ),
         const SizedBox(height: 12),
         Text(
-          devices.isEmpty ? 'Tap refresh to scan' : '${devices.length} ring(s) found',
+          devices.isEmpty
+              ? 'Tap refresh to scan'
+              : '${devices.length} ring(s) found',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
@@ -658,7 +890,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
   void _connectDevice(ScannedDevice device) {
     _stopScan();
     ref.read(connectedDeviceProvider.notifier).state = device;
-    ref.read(ringConnectionStateProvider.notifier).state = RingConnectionState.connecting;
+    ref.read(ringConnectionStateProvider.notifier).state =
+        RingConnectionState.connecting;
 
     // Connect via native SDK
     RingPlugin.connect(device.macAddress);
@@ -666,16 +899,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with SingleTickerProvid
     // Listen for connection state
     RingPlugin.connectionState.listen((state) {
       if (!mounted) return;
-      
+
       if (state == RingConnectionState.connected) {
-        ref.read(ringConnectionStateProvider.notifier).state = RingConnectionState.connected;
-        
+        ref.read(ringConnectionStateProvider.notifier).state =
+            RingConnectionState.connected;
+
         // Only pop if this screen is currently visible to prevent black screen
         if (mounted && ModalRoute.of(context)?.isCurrent == true) {
-           Navigator.of(context).pop();
+          Navigator.of(context).pop();
         }
       } else if (state == RingConnectionState.disconnected) {
-        ref.read(ringConnectionStateProvider.notifier).state = RingConnectionState.disconnected;
+        ref.read(ringConnectionStateProvider.notifier).state =
+            RingConnectionState.disconnected;
       }
     });
   }
@@ -688,81 +923,184 @@ class _DeviceTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _DeviceTile({
-    required this.device, 
-    required this.isDark, 
-    required this.isConnecting, 
+    required this.device,
+    required this.isDark,
+    required this.isConnecting,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final compactMac = device.macAddress.replaceAll(':', '');
+    final suffix = compactMac.length >= 4
+        ? compactMac.substring(compactMac.length - 4)
+        : compactMac;
+    final title =
+        device.name.trim().isEmpty || device.name.toLowerCase() == 'unknown'
+        ? 'Nirvana Ring'
+        : device.name;
+    final shortId = compactMac.isEmpty
+        ? 'Ring nearby'
+        : 'ID • ${suffix.toUpperCase()}';
+    final signalLabel = device.rssi >= -55
+        ? 'Excellent'
+        : device.rssi >= -67
+        ? 'Strong'
+        : device.rssi >= -78
+        ? 'Good'
+        : device.rssi >= -88
+        ? 'Weak'
+        : 'Far';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: isConnecting ? null : onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.cardDark : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isConnecting 
-                ? AppColors.primary 
-                : (isDark ? AppColors.cardBorderDark : AppColors.cardBorderLight),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1), 
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: isConnecting
-                  ? const SizedBox(
-                      width: 22, 
-                      height: 22, 
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-                    )
-                  : const Icon(Icons.ring_volume_rounded, color: AppColors.primary, size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(device.name, style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 2),
-                    Text(device.macAddress, style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    children: List.generate(4, (i) => Container(
-                      width: 4,
-                      height: 12 + i * 3.0,
-                      margin: const EdgeInsets.only(left: 2),
-                      decoration: BoxDecoration(
-                        color: i < device.signalBars 
-                          ? AppColors.primary 
-                          : (isDark ? AppColors.cardBorderDark : AppColors.cardBorderLight),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    )),
-                  ),
-                  if (device.battery != null) ...[
-                    const SizedBox(height: 4), 
-                    Text('${device.battery}%', style: Theme.of(context).textTheme.labelSmall),
-                  ],
-                ],
-              ),
-            ],
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isConnecting
+                ? AppColors.primary
+                : (isDark
+                      ? AppColors.cardBorderDark
+                      : AppColors.cardBorderLight),
           ),
         ),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: isConnecting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.ring_volume_rounded,
+                      color: AppColors.primary,
+                      size: 22,
+                    ),
+            ),
+            const SizedBox(width: 14),
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(shortId, style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _DeviceMiniChip(
+                        icon: Icons.network_cell_rounded,
+                        label: '$signalLabel · ${device.rssi} dBm',
+                      ),
+                      if (device.isBonded)
+                        const _DeviceMiniChip(
+                          icon: Icons.verified_rounded,
+                          label: 'Previously paired',
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Pair button / signal bars
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  children: List.generate(
+                    4,
+                    (i) => Container(
+                      width: 4,
+                      height: 10 + i * 3.0,
+                      margin: const EdgeInsets.only(left: 2),
+                      decoration: BoxDecoration(
+                        color: i < device.signalBars
+                            ? AppColors.primary
+                            : (isDark
+                                  ? AppColors.cardBorderDark
+                                  : AppColors.cardBorderLight),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  onPressed: isConnecting ? null : onTap,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Text(isConnecting ? 'Pairing…' : 'Pair'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// _DeviceStatPill removed — no longer used in the redesigned scan screen.
+
+class _DeviceMiniChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _DeviceMiniChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: isDark ? 0.12 : 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
       ),
     );
   }

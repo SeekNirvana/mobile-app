@@ -64,11 +64,19 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
     if (session.records.isNotEmpty) {
       final firstRecord = session.records.first;
       final lastRecord = session.records.last;
-      ref.read(sleepStartTimeProvider.notifier).state = 
+      ref.read(sleepStartTimeProvider.notifier).state =
           DateTime.fromMillisecondsSinceEpoch(firstRecord.timestamp * 1000);
-      ref.read(sleepEndTimeProvider.notifier).state = 
+      ref.read(sleepEndTimeProvider.notifier).state =
           DateTime.fromMillisecondsSinceEpoch(lastRecord.timestamp * 1000);
     }
+  }
+
+  void _goBackOrHome() {
+    if (GoRouter.of(context).canPop()) {
+      context.pop();
+      return;
+    }
+    context.go('/');
   }
 
   void _showLogViewer(BuildContext context) async {
@@ -79,7 +87,8 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _LogViewerSheet(sessions: sessions, logPath: logPath),
+      builder: (context) =>
+          _LogViewerSheet(sessions: sessions, logPath: logPath),
     );
   }
 
@@ -102,172 +111,180 @@ class _SleepScreenState extends ConsumerState<SleepScreen> {
     final hasData = totalMinutes > 0;
 
     return Scaffold(
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // Header with back button
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 20, 0),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios_rounded),
-                      onPressed: () => context.go('/vitals'),
-                    ),
-                    Expanded(
-                      child: Text(
-                        'Sleep & Dreams',
-                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    // Log file button
-                    IconButton(
-                      icon: const Icon(Icons.description_outlined),
-                      tooltip: 'View Log',
-                      onPressed: () => _showLogViewer(context),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Date Navigator
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: _DateNavigator(
-                  selectedDate: selectedDate,
-                  onDateChanged: (date) {
-                    ref.read(selectedSleepDateProvider.notifier).state = date;
-                    _loadSessionForDate(date);
-                  },
-                ),
-              ),
-            ),
-
-            // Sleep duration overview
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: _SleepOverviewCard(
-                  duration: sleepDuration,
-                  deepMinutes: deepSleep,
-                  lightMinutes: lightSleep,
-                  remMinutes: remSleep,
-                  awakeMinutes: awakeSleep,
-                  sleepStart: sleepStart,
-                  sleepEnd: sleepEnd,
-                  dateLabel: selectedDate != null ? _getDateLabel(selectedDate) : 'Last Night',
-                  isDark: isDark,
-                ),
-              ),
-            ),
-
-            // Sleep stages chart
-            if (hasData)
+      body: Container(
+        decoration: BoxDecoration(gradient: AppColors.screenGradient(isDark)),
+        child: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              // Header with back button
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  child: _SleepStagesCard(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 20, 0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_rounded),
+                        onPressed: _goBackOrHome,
+                      ),
+                      Expanded(
+                        child: Text(
+                          'Sleep & Dreams',
+                          style: Theme.of(context).textTheme.headlineLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      // Log file button
+                      IconButton(
+                        icon: const Icon(Icons.description_outlined),
+                        tooltip: 'View Log',
+                        onPressed: () => _showLogViewer(context),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Date Navigator
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: _DateNavigator(
+                    selectedDate: selectedDate,
+                    onDateChanged: (date) {
+                      ref.read(selectedSleepDateProvider.notifier).state = date;
+                      _loadSessionForDate(date);
+                    },
+                  ),
+                ),
+              ),
+
+              // Sleep duration overview
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: _SleepOverviewCard(
+                    duration: sleepDuration,
                     deepMinutes: deepSleep,
                     lightMinutes: lightSleep,
                     remMinutes: remSleep,
                     awakeMinutes: awakeSleep,
-                    isDark: isDark,
-                  ),
-                ),
-              ),
-
-            // Sleep timeline from history
-            if (hasData)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  child: _SleepTimelineCard(
-                    historyData: historyData,
                     sleepStart: sleepStart,
                     sleepEnd: sleepEnd,
+                    dateLabel: selectedDate != null
+                        ? _getDateLabel(selectedDate)
+                        : 'Last Night',
                     isDark: isDark,
                   ),
                 ),
               ),
 
-            // Sync button
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: OutlinedButton.icon(
-                  onPressed: () => RingPlugin.readHistory(),
-                  icon: const Icon(Icons.sync_rounded),
-                  label: const Text('Sync Sleep Data'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.sleep,
-                    side: BorderSide(color: AppColors.sleep.withValues(alpha: 0.5)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppConstants.radiusLG),
+              // Sleep stages chart
+              if (hasData)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: _SleepStagesCard(
+                      deepMinutes: deepSleep,
+                      lightMinutes: lightSleep,
+                      remMinutes: remSleep,
+                      awakeMinutes: awakeSleep,
+                      isDark: isDark,
+                    ),
+                  ),
+                ),
+
+              // Sleep timeline from history
+              if (hasData)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: _SleepTimelineCard(
+                      historyData: historyData,
+                      sleepStart: sleepStart,
+                      sleepEnd: sleepEnd,
+                      isDark: isDark,
+                    ),
+                  ),
+                ),
+
+              // Sync button
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: OutlinedButton.icon(
+                    onPressed: () => RingPlugin.readHistory(),
+                    icon: const Icon(Icons.sync_rounded),
+                    label: const Text('Sync Sleep Data'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.sleep,
+                      side: BorderSide(
+                        color: AppColors.sleep.withValues(alpha: 0.5),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          AppConstants.radiusLG,
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
 
-            // ── Lucid Dreaming Section ──
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 32, 20, 0),
-                child: Text(
-                  'Lucid Dreaming',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+              // ── Lucid Dreaming Section ──
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 32, 20, 0),
+                  child: Text(
+                    'Lucid Dreaming',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: _LucidDreamingCard(
-                  enabled: audioSettings.enabled,
-                  onToggle: (val) => remAudio.setEnabled(val),
-                  isDark: isDark,
-                ),
-              ),
-            ),
-
-            if (audioSettings.enabled) ...[
-              // Sound Selection
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  child: _SoundSelectionCard(
-                    selectedSound: audioSettings.selectedSound,
-                    sounds: audioSettings.availableSounds,
-                    volume: audioSettings.volume,
-                    onSoundChanged: (s) => remAudio.setSound(s),
-                    onVolumeChanged: (v) => remAudio.setVolume(v),
-                    onTestPlay: () => remAudio.testPlay(),
-                    isPlaying: audioSettings.isPlaying,
+                  child: _LucidDreamingCard(
+                    enabled: audioSettings.enabled,
+                    onToggle: (val) => remAudio.setEnabled(val),
                     isDark: isDark,
                   ),
                 ),
               ),
 
-              // How it works
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  child: _HowItWorksCard(isDark: isDark),
+              if (audioSettings.enabled) ...[
+                // Sound Selection
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: _SoundSelectionCard(
+                      selectedSound: audioSettings.selectedSound,
+                      sounds: audioSettings.availableSounds,
+                      volume: audioSettings.volume,
+                      onSoundChanged: (s) => remAudio.setSound(s),
+                      onVolumeChanged: (v) => remAudio.setVolume(v),
+                      onTestPlay: () => remAudio.testPlay(),
+                      isPlaying: audioSettings.isPlaying,
+                      isDark: isDark,
+                    ),
+                  ),
                 ),
-              ),
-            ],
 
-            const SliverToBoxAdapter(child: SizedBox(height: 40)),
-          ],
+                // How it works
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: _HowItWorksCard(isDark: isDark),
+                  ),
+                ),
+              ],
+
+              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+            ],
+          ),
         ),
       ),
     );
@@ -357,7 +374,9 @@ class _SleepOverviewCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.5),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
@@ -404,7 +423,9 @@ class _SleepOverviewCard extends StatelessWidget {
             Text(
               'No sleep data yet. Wear the ring overnight and sync in the morning.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                color: isDark
+                    ? AppColors.textSecondaryDark
+                    : AppColors.textSecondaryLight,
               ),
             ),
           ],
@@ -485,9 +506,9 @@ class _SleepStagesCard extends StatelessWidget {
         children: [
           Text(
             'Sleep Stages',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -501,28 +522,44 @@ class _SleepStagesCard extends StatelessWidget {
                     value: deepMinutes.toDouble(),
                     color: AppColors.sleepDeep,
                     title: '${(deepMinutes / total * 100).round()}%',
-                    titleStyle: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    titleStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                     radius: 45,
                   ),
                   PieChartSectionData(
                     value: lightMinutes.toDouble(),
                     color: AppColors.sleepLight,
                     title: '${(lightMinutes / total * 100).round()}%',
-                    titleStyle: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    titleStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                     radius: 45,
                   ),
                   PieChartSectionData(
                     value: remMinutes.toDouble(),
                     color: AppColors.sleepREM,
                     title: '${(remMinutes / total * 100).round()}%',
-                    titleStyle: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    titleStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                     radius: 45,
                   ),
                   PieChartSectionData(
                     value: awakeMinutes.toDouble(),
                     color: AppColors.sleepAwake,
                     title: '${(awakeMinutes / total * 100).round()}%',
-                    titleStyle: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    titleStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                     radius: 45,
                   ),
                 ],
@@ -565,10 +602,7 @@ class _LegendItem extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(fontSize: 11, color: color),
-        ),
+        Text(label, style: TextStyle(fontSize: 11, color: color)),
       ],
     );
   }
@@ -592,12 +626,10 @@ class _SleepTimelineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Filter sleep records only
-    final sleepRecords = historyData
-        .where((r) {
-          final st = r['sleepType'];
-          return st != null && st is int && st > 0;
-        })
-        .toList();
+    final sleepRecords = historyData.where((r) {
+      final st = r['sleepType'];
+      return st != null && st is int && st > 0;
+    }).toList();
 
     if (sleepRecords.isEmpty) return const SizedBox.shrink();
 
@@ -618,14 +650,16 @@ class _SleepTimelineCard extends StatelessWidget {
             children: [
               Text(
                 'Sleep Timeline',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               Text(
                 '${sleepRecords.length} data points',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                  color: isDark
+                      ? AppColors.textSecondaryDark
+                      : AppColors.textSecondaryLight,
                 ),
               ),
             ],
@@ -636,11 +670,19 @@ class _SleepTimelineCard extends StatelessWidget {
             children: [
               Text(
                 sleepStart != null ? timeFormat.format(sleepStart!) : 'Bedtime',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.sleepDeep),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.sleepDeep,
+                ),
               ),
               Text(
                 sleepEnd != null ? timeFormat.format(sleepEnd!) : 'Wake up',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.sleepREM),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.sleepREM,
+                ),
               ),
             ],
           ),
@@ -654,16 +696,28 @@ class _SleepTimelineCard extends StatelessWidget {
                 Color color;
                 // SDK sleep type: 1=Awake, 2=Light, 3=Deep, 4=REM
                 switch (sleepType) {
-                  case 1: color = AppColors.sleepAwake; break;
-                  case 2: color = AppColors.sleepLight; break;
-                  case 3: color = AppColors.sleepDeep; break;
-                  case 4: color = AppColors.sleepREM; break;
-                  default: color = Colors.grey;
+                  case 1:
+                    color = AppColors.sleepAwake;
+                    break;
+                  case 2:
+                    color = AppColors.sleepLight;
+                    break;
+                  case 3:
+                    color = AppColors.sleepDeep;
+                    break;
+                  case 4:
+                    color = AppColors.sleepREM;
+                    break;
+                  default:
+                    color = Colors.grey;
                 }
                 // Height reflects sleep depth: Deep tallest, Awake shortest
-                final heightFactor = sleepType == 3 ? 1.0
-                    : sleepType == 4 ? 0.75
-                    : sleepType == 2 ? 0.5
+                final heightFactor = sleepType == 3
+                    ? 1.0
+                    : sleepType == 4
+                    ? 0.75
+                    : sleepType == 2
+                    ? 0.5
                     : 0.2;
                 return Expanded(
                   child: Align(
@@ -769,7 +823,9 @@ class _LucidDreamingCard extends StatelessWidget {
                       ? 'Audio cues play during REM'
                       : 'Audio triggers for REM sleep',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                    color: isDark
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondaryLight,
                     fontSize: 12,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -819,18 +875,16 @@ class _SoundSelectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(AppConstants.radiusXL),
-        border: Border.all(
-          color: AppColors.sleepREM.withValues(alpha: 0.15),
-        ),
+        border: Border.all(color: AppColors.sleepREM.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'REM Audio Cue',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           // Sound selector dropdown
@@ -847,7 +901,10 @@ class _SoundSelectionCard extends StatelessWidget {
               child: DropdownButton<String>(
                 value: selectedSound,
                 isExpanded: true,
-                icon: const Icon(Icons.arrow_drop_down, color: AppColors.sleepREM),
+                icon: const Icon(
+                  Icons.arrow_drop_down,
+                  color: AppColors.sleepREM,
+                ),
                 style: TextStyle(
                   color: isDark ? Colors.white : Colors.black87,
                   fontSize: 15,
@@ -866,7 +923,9 @@ class _SoundSelectionCard extends StatelessWidget {
                         Icon(
                           Icons.music_note_rounded,
                           size: 18,
-                          color: sound == selectedSound ? AppColors.sleepREM : Colors.grey,
+                          color: sound == selectedSound
+                              ? AppColors.sleepREM
+                              : Colors.grey,
                         ),
                         const SizedBox(width: 12),
                         Text(sound),
@@ -918,14 +977,22 @@ class _SoundSelectionCard extends StatelessWidget {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.sleepREM),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.sleepREM,
+                      ),
                     )
                   : const Icon(Icons.play_arrow_rounded, size: 20),
               label: Text(isPlaying ? 'Playing...' : 'Test Sound'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.sleepREM,
-                side: BorderSide(color: AppColors.sleepREM.withValues(alpha: 0.5)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                side: BorderSide(
+                  color: AppColors.sleepREM.withValues(alpha: 0.5),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -949,16 +1016,18 @@ class _HowItWorksCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(AppConstants.radiusXL),
-        border: Border.all(
-          color: AppColors.sleepREM.withValues(alpha: 0.15),
-        ),
+        border: Border.all(color: AppColors.sleepREM.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.sleepREM, size: 20),
+              Icon(
+                Icons.info_outline_rounded,
+                color: AppColors.sleepREM,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Text(
                 'How Lucid Dreaming Works',
@@ -973,25 +1042,29 @@ class _HowItWorksCard extends StatelessWidget {
           _StepItem(
             step: '1',
             title: 'Sleep Stage Detection',
-            description: 'The ring monitors your sleep stages in real-time using PPG sensors.',
+            description:
+                'The ring monitors your sleep stages in real-time using PPG sensors.',
             color: AppColors.sleepDeep,
           ),
           _StepItem(
             step: '2',
             title: 'REM Detection',
-            description: 'When REM sleep is detected, the app prepares an audio cue.',
+            description:
+                'When REM sleep is detected, the app prepares an audio cue.',
             color: AppColors.sleepREM,
           ),
           _StepItem(
             step: '3',
             title: 'Gentle Audio Trigger',
-            description: 'A subtle sound plays, just loud enough to enter your dream without waking you.',
+            description:
+                'A subtle sound plays, just loud enough to enter your dream without waking you.',
             color: AppColors.sleepLight,
           ),
           _StepItem(
             step: '4',
             title: 'Become Aware',
-            description: 'The audio becomes a cue in your dream, triggering lucid awareness.',
+            description:
+                'The audio becomes a cue in your dream, triggering lucid awareness.',
             color: AppColors.sleep,
           ),
         ],
@@ -1050,10 +1123,7 @@ class _StepItem extends StatelessWidget {
                     color: color,
                   ),
                 ),
-                Text(
-                  description,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                Text(description, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
@@ -1062,7 +1132,6 @@ class _StepItem extends StatelessWidget {
     );
   }
 }
-
 
 // ─── Time Info Widget ────────────────────────────
 
@@ -1099,10 +1168,7 @@ class _TimeInfo extends StatelessWidget {
             ),
             Text(
               time != null ? timeFormat.format(time!) : '--:--',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -1128,7 +1194,7 @@ class _DateNavigator extends StatelessWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final currentDate = selectedDate ?? today;
-    
+
     final daysBack = today.difference(currentDate).inDays;
     final canGoBack = daysBack < 30;
     final canGoForward = currentDate.isBefore(today);
@@ -1136,7 +1202,10 @@ class _DateNavigator extends StatelessWidget {
     String dateLabel;
     if (_isSameDay(currentDate, today)) {
       dateLabel = 'Today';
-    } else if (_isSameDay(currentDate, today.subtract(const Duration(days: 1)))) {
+    } else if (_isSameDay(
+      currentDate,
+      today.subtract(const Duration(days: 1)),
+    )) {
       dateLabel = 'Yesterday';
     } else {
       dateLabel = DateFormat('EEE, MMM d').format(currentDate);
@@ -1152,19 +1221,23 @@ class _DateNavigator extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: canGoBack 
-              ? () => onDateChanged(currentDate.subtract(const Duration(days: 1)))
-              : null,
+            onPressed: canGoBack
+                ? () => onDateChanged(
+                    currentDate.subtract(const Duration(days: 1)),
+                  )
+                : null,
             icon: Icon(
               Icons.chevron_left_rounded,
-              color: canGoBack ? AppColors.sleep : Colors.grey.withValues(alpha: 0.3),
+              color: canGoBack
+                  ? AppColors.sleep
+                  : Colors.grey.withValues(alpha: 0.3),
             ),
             tooltip: 'Previous day',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             iconSize: 24,
           ),
-          
+
           Expanded(
             child: InkWell(
               onTap: () => _showDatePicker(context, currentDate),
@@ -1178,16 +1251,19 @@ class _DateNavigator extends StatelessWidget {
                     children: [
                       Text(
                         dateLabel,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.sleep,
-                          fontSize: 15,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.sleep,
+                              fontSize: 15,
+                            ),
                       ),
                       Text(
                         DateFormat('MMM d, yyyy').format(currentDate),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                          color: isDark
+                              ? AppColors.textSecondaryDark
+                              : AppColors.textSecondaryLight,
                           fontSize: 11,
                         ),
                       ),
@@ -1197,21 +1273,23 @@ class _DateNavigator extends StatelessWidget {
               ),
             ),
           ),
-          
+
           IconButton(
-            onPressed: canGoForward 
-              ? () => onDateChanged(currentDate.add(const Duration(days: 1)))
-              : null,
+            onPressed: canGoForward
+                ? () => onDateChanged(currentDate.add(const Duration(days: 1)))
+                : null,
             icon: Icon(
               Icons.chevron_right_rounded,
-              color: canGoForward ? AppColors.sleep : Colors.grey.withValues(alpha: 0.3),
+              color: canGoForward
+                  ? AppColors.sleep
+                  : Colors.grey.withValues(alpha: 0.3),
             ),
             tooltip: 'Next day',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             iconSize: 24,
           ),
-          
+
           if (!_isSameDay(currentDate, today))
             IconButton(
               onPressed: () => onDateChanged(today),
@@ -1227,10 +1305,13 @@ class _DateNavigator extends StatelessWidget {
     );
   }
 
-  Future<void> _showDatePicker(BuildContext context, DateTime currentDate) async {
+  Future<void> _showDatePicker(
+    BuildContext context,
+    DateTime currentDate,
+  ) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    
+
     final picked = await showDatePicker(
       context: context,
       initialDate: currentDate,
@@ -1242,21 +1323,21 @@ class _DateNavigator extends StatelessWidget {
             colorScheme: ColorScheme.light(
               primary: AppColors.sleep,
               onPrimary: Colors.white,
-              surface: Theme.of(context).brightness == Brightness.dark 
-                ? AppColors.cardDark 
-                : Colors.white,
+              surface: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.cardDark
+                  : Colors.white,
             ),
           ),
           child: child!,
         );
       },
     );
-    
+
     if (picked != null) {
       onDateChanged(picked);
     }
   }
-  
+
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
@@ -1268,15 +1349,12 @@ class _LogViewerSheet extends StatelessWidget {
   final List<SleepSession> sessions;
   final String logPath;
 
-  const _LogViewerSheet({
-    required this.sessions,
-    required this.logPath,
-  });
+  const _LogViewerSheet({required this.sessions, required this.logPath});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
       decoration: BoxDecoration(
@@ -1323,33 +1401,33 @@ class _LogViewerSheet extends StatelessWidget {
           Divider(height: 1, color: isDark ? Colors.white12 : Colors.black12),
           Expanded(
             child: sessions.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.bedtime_outlined,
-                        size: 48,
-                        color: Colors.grey.withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No sleep sessions recorded yet',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Colors.grey,
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.bedtime_outlined,
+                          size: 48,
+                          color: Colors.grey.withValues(alpha: 0.5),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        Text(
+                          'No sleep sessions recorded yet',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodyLarge?.copyWith(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: sessions.length,
+                    itemBuilder: (context, index) {
+                      final session = sessions[sessions.length - 1 - index];
+                      return _SessionLogCard(session: session, isDark: isDark);
+                    },
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: sessions.length,
-                  itemBuilder: (context, index) {
-                    final session = sessions[sessions.length - 1 - index];
-                    return _SessionLogCard(session: session, isDark: isDark);
-                  },
-                ),
           ),
           Padding(
             padding: const EdgeInsets.all(16),
@@ -1409,7 +1487,11 @@ class _SessionLogCard extends StatelessWidget {
               children: [
                 _StageBadge('Deep', session.deepMinutes, AppColors.sleepDeep),
                 const SizedBox(width: 8),
-                _StageBadge('Light', session.lightMinutes, AppColors.sleepLight),
+                _StageBadge(
+                  'Light',
+                  session.lightMinutes,
+                  AppColors.sleepLight,
+                ),
                 const SizedBox(width: 8),
                 _StageBadge('REM', session.remMinutes, AppColors.sleepREM),
               ],

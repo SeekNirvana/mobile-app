@@ -1,7 +1,7 @@
 name: seeknirvana
 description: "SeekNirvana Smart Ring Health App"
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.1+1
 
 environment:
   sdk: ^3.11.0
@@ -40,6 +40,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/SeekNirvana_Logo.png
+    - assets/branding/seeknirvana_mark.png
+    - assets/branding/seeknirvana_icon_master.png
     - assets/audio/chime-sound.mp3
     - assets/audio/tibetan-bowl-sound.mp3
     - assets/audio/tibetan-singing-bowl.mp3

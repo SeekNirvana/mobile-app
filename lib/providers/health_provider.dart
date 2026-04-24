@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import '../services/profile_preferences_service.dart';
+
 /// Health data providers.
 /// All values default to 0/empty. Real data comes from RingDataService
 /// which updates these providers when the ring sends data.
@@ -23,7 +25,9 @@ final temperatureMeasuringProvider = StateProvider<bool>((ref) => false);
 
 // Steps from ring
 final stepsProvider = StateProvider<int>((ref) => 0);
-final stepGoalProvider = StateProvider<int>((ref) => 10000);
+final stepGoalProvider = Provider<int>((ref) {
+  return ref.watch(profilePreferencesProvider).stepGoal;
+});
 
 // Calories (derived from steps, will be computed when data available)
 final caloriesProvider = StateProvider<int>((ref) => 0);
@@ -90,4 +94,3 @@ final heartRateLastScanProvider = StateProvider<DateTime?>((ref) => null);
 final spo2LastScanProvider = StateProvider<DateTime?>((ref) => null);
 final temperatureLastScanProvider = StateProvider<DateTime?>((ref) => null);
 final bpLastScanProvider = StateProvider<DateTime?>((ref) => null);
-

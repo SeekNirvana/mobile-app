@@ -5,10 +5,12 @@ import 'package:seeknirvana/features/vitals/vitals_screen.dart';
 import 'package:seeknirvana/features/sleep/sleep_screen.dart';
 import 'package:seeknirvana/features/activities/activities_screen.dart';
 import 'package:seeknirvana/features/guides/guides_screen.dart';
+import 'package:seeknirvana/features/journal/journal_screen.dart';
 import 'package:seeknirvana/features/profile/profile_screen.dart';
 import 'package:seeknirvana/features/profile/capabilities_screen.dart';
 import 'package:seeknirvana/features/profile/about_screen.dart';
 import 'package:seeknirvana/features/scan/scan_screen.dart';
+import 'package:seeknirvana/services/guide_model_manager.dart';
 import 'package:seeknirvana/shared/widgets/app_scaffold.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -29,6 +31,11 @@ final router = GoRouter(
               const NoTransitionPage(child: HomeScreen()),
         ),
         GoRoute(
+          path: '/journal',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: JournalScreen()),
+        ),
+        GoRoute(
           path: '/vitals',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: VitalsScreen()),
@@ -45,8 +52,16 @@ final router = GoRouter(
         ),
         GoRoute(
           path: '/guides',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: GuidesScreen()),
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: GuidesScreen(
+              initialPrompt: state.uri.queryParameters['prompt'],
+              initialGuide: switch (state.uri.queryParameters['guide']) {
+                'luna' => GuideKind.luna,
+                'nova' => GuideKind.nova,
+                _ => null,
+              },
+            ),
+          ),
         ),
         GoRoute(
           path: '/profile',

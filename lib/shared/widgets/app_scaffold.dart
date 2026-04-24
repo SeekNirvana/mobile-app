@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../core/theme/app_colors.dart';
 
 class AppScaffold extends StatelessWidget {
@@ -9,89 +11,137 @@ class AppScaffold extends StatelessWidget {
 
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
-    if (location.startsWith('/vitals')) {
+    if (location.startsWith('/journal')) {
       return 1;
     }
-    if (location.startsWith('/sleep')) {
-      return 1; // Sleep shows Vitals as selected
-    }
-    if (location.startsWith('/activities')) {
+    if (location.startsWith('/guides')) {
       return 2;
     }
-    if (location.startsWith('/guides')) {
+    if (location.startsWith('/profile') ||
+        location.startsWith('/capabilities') ||
+        location.startsWith('/about')) {
       return 3;
-    }
-    if (location.startsWith('/profile')) {
-      return 4;
-    }
-    if (location.startsWith('/capabilities')) {
-      return 4; // Capabilities shows Profile as selected
-    }
-    if (location.startsWith('/about')) {
-      return 4; // About shows Profile as selected
     }
     return 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final index = _currentIndex(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final index = _currentIndex(context);
+    final location = GoRouterState.of(context).uri.toString();
+    final canPop = GoRouter.of(context).canPop();
+    final showBottomNav =
+        location == '/' ||
+        location.startsWith('/journal') ||
+        location.startsWith('/guides') ||
+        location.startsWith('/profile');
+    final shouldConfirmExit =
+        !canPop &&
+        (location == '/' ||
+            location == '/journal' ||
+            location == '/guides' ||
+            location == '/profile');
 
-    return Scaffold(
-      body: child,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-          border: Border(
-            top: BorderSide(
-              color: isDark
-                  ? AppColors.cardBorderDark
-                  : AppColors.cardBorderLight,
-              width: 0.5,
-            ),
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _NavItem(
-                  icon: Icons.dashboard_rounded,
-                  label: 'Dashboard',
-                  isSelected: index == 0,
-                  onTap: () => context.go('/'),
+    return PopScope(
+      canPop: !shouldConfirmExit,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop || !shouldConfirmExit) return;
+        final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text('Close SeekNirvana?'),
+              content: const Text(
+                'Do you really want to close the app right now?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Stay'),
                 ),
-                _NavItem(
-                  icon: Icons.favorite_rounded,
-                  label: 'Vitals',
-                  isSelected: index == 1,
-                  onTap: () => context.go('/vitals'),
-                ),
-                _NavItem(
-                  icon: Icons.self_improvement_rounded,
-                  label: 'Activities',
-                  isSelected: index == 2,
-                  onTap: () => context.go('/activities'),
-                ),
-                _NavItem(
-                  icon: Icons.auto_awesome_rounded,
-                  label: 'Guides',
-                  isSelected: index == 3,
-                  onTap: () => context.go('/guides'),
-                ),
-                _NavItem(
-                  icon: Icons.person_rounded,
-                  label: 'Profile',
-                  isSelected: index == 4,
-                  onTap: () => context.go('/profile'),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Close'),
                 ),
               ],
-            ),
-          ),
-        ),
+            );
+          },
+        );
+        if (shouldExit == true) {
+          await SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        extendBody: showBottomNav,
+        body: child,
+        bottomNavigationBar: showBottomNav
+            ? SafeArea(
+                minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        (isDark ? AppColors.elevatedDark : AppColors.cardLight)
+                            .withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(26),
+                    border: Border.all(
+                      color: isDark
+                          ? AppColors.cardBorderDark
+                          : AppColors.cardBorderLight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.32 : 0.12,
+                        ),
+                        blurRadius: 32,
+                        offset: const Offset(0, 16),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _NavItem(
+                          icon: Icons.space_dashboard_rounded,
+                          label: 'Home',
+                          isSelected: index == 0,
+                          onTap: () => context.go('/'),
+                        ),
+                      ),
+                      Expanded(
+                        child: _NavItem(
+                          icon: Icons.menu_book_rounded,
+                          label: 'Journal',
+                          isSelected: index == 1,
+                          onTap: () => context.go('/journal'),
+                        ),
+                      ),
+                      Expanded(
+                        child: _NavItem(
+                          icon: Icons.auto_awesome_rounded,
+                          label: 'Guides',
+                          isSelected: index == 2,
+                          onTap: () => context.go('/guides'),
+                        ),
+                      ),
+                      Expanded(
+                        child: _NavItem(
+                          icon: Icons.person_rounded,
+                          label: 'Profile',
+                          isSelected: index == 3,
+                          onTap: () => context.go('/profile'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -112,31 +162,39 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isSelected ? AppColors.primary : AppColors.textSecondaryDark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = isSelected ? AppColors.gold : AppColors.primary;
+    final textColor = isSelected
+        ? (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight)
+        : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight);
 
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: isSelected
-            ? BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              )
-            : null,
+        duration: const Duration(milliseconds: 240),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [
+                    AppColors.gold.withValues(alpha: 0.14),
+                    AppColors.green.withValues(alpha: 0.12),
+                  ],
+                )
+              : null,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 2),
+            Icon(icon, size: 22, color: activeColor),
+            const SizedBox(height: 5),
             Text(
               label,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: textColor,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
               ),
             ),
           ],

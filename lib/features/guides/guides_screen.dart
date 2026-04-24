@@ -17,7 +17,10 @@ import '../../services/guide_runtime_service.dart';
 import '../../services/guide_voice_service.dart';
 
 class GuidesScreen extends ConsumerStatefulWidget {
-  const GuidesScreen({super.key});
+  final String? initialPrompt;
+  final GuideKind? initialGuide;
+
+  const GuidesScreen({super.key, this.initialPrompt, this.initialGuide});
 
   @override
   ConsumerState<GuidesScreen> createState() => _GuidesScreenState();
@@ -36,7 +39,29 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
     // Auto-refresh model status when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshModelStatus();
+      _applyInitialSeed();
     });
+  }
+
+  Future<void> _applyInitialSeed() async {
+    final targetGuide = widget.initialGuide;
+    final prompt = widget.initialPrompt?.trim();
+    final store = ref.read(guideChatStoreProvider);
+    await store.init();
+    if (targetGuide != null) {
+      store.selectGuide(targetGuide);
+      if (store.currentSession == null) {
+        await store.startNewSession(guide: targetGuide);
+      }
+    }
+    if (prompt != null &&
+        prompt.isNotEmpty &&
+        _composerController.text.trim().isEmpty) {
+      _composerController.value = TextEditingValue(
+        text: prompt,
+        selection: TextSelection.collapsed(offset: prompt.length),
+      );
+    }
   }
 
   Future<void> _refreshModelStatus() async {
@@ -66,8 +91,9 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
   }
 
   void _openInfoPage(BuildContext context) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(
+        fullscreenDialog: true,
         builder: (_) => GuideInfoScreen(runtimeService: _runtimeService),
       ),
     );
@@ -383,236 +409,239 @@ class _GuidesScreenState extends ConsumerState<GuidesScreen> {
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: true,
-      backgroundColor: isDark
-          ? AppColors.backgroundDark
-          : AppColors.backgroundLight,
       drawer: _GuideHistoryDrawer(
         store: store,
         onRenameSession: (session) => _renameSession(context, store, session),
         onDeleteSession: (session) => _deleteSession(context, store, session),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Compact header section
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                    icon: const Icon(Icons.menu_rounded, size: 22),
-                    tooltip: 'Open chat history',
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
-                    ),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          session?.title ?? persona.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        Text(
-                          'Private · ${persona.modelLabel}',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                fontSize: 11,
-                                color: isDark
-                                    ? AppColors.textSecondaryDark
-                                    : AppColors.textSecondaryLight,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _openInfoPage(context),
-                    icon: const Icon(Icons.info_outline_rounded, size: 22),
-                    tooltip: 'Guide setup and downloads',
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
-                    ),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-            if (activeGuideKinds.length > 1)
+      body: Container(
+        decoration: BoxDecoration(gradient: AppColors.screenGradient(isDark)),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Compact header section
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                child: _GuideSelector(
-                  selectedGuide: selectedGuide,
-                  onGuideChanged: (guide) {
-                    store.selectGuide(guide);
-                    _runtimeService.offload();
-                  },
-                ),
-              ),
-            if (!hasUserMessage) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                child: _GuideHeroCard(persona: persona),
-              ),
-              const SizedBox(height: 6),
-            ] else ...[
-              const SizedBox(height: 6),
-            ],
-            Expanded(
-              child: session == null
-                  ? Center(
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                      icon: const Icon(Icons.menu_rounded, size: 22),
+                      tooltip: 'Open chat history',
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    Expanded(
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (manager.globalError != null) ...[
-                            Icon(
-                              Icons.error_outline_rounded,
-                              size: 48,
-                              color: AppColors.error,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Something went wrong',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              manager.globalError!,
-                              style: Theme.of(context).textTheme.bodySmall,
-                              textAlign: TextAlign.center,
-                            ),
-                          ] else if (!manager
-                              .stateFor(selectedGuide)
-                              .isReady) ...[
-                            Icon(
-                              Icons.download_outlined,
-                              size: 48,
-                              color: isDark
-                                  ? AppColors.textSecondaryDark
-                                  : AppColors.textSecondaryLight,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Download ${persona.name} to start chatting',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Go to Guide Setup to download the AI model',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ] else ...[
-                            Icon(
-                              Icons.chat_bubble_outline_rounded,
-                              size: 48,
-                              color: isDark
-                                  ? AppColors.textSecondaryDark
-                                  : AppColors.textSecondaryLight,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Start a new chat with ${persona.name}',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: () => store.startNewSession(),
-                              icon: const Icon(Icons.add_comment_rounded),
-                              label: const Text('Start New Chat'),
-                            ),
-                          ],
+                          Text(
+                            session?.title ?? persona.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            'Private · ${persona.modelLabel}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontSize: 11,
+                                  color: isDark
+                                      ? AppColors.textSecondaryDark
+                                      : AppColors.textSecondaryLight,
+                                ),
+                          ),
                         ],
                       ),
-                    )
-                  : ListView.builder(
-                      controller: _messagesScrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      itemCount: session.messages.length,
-                      itemBuilder: (context, index) {
-                        final message = session.messages[index];
-                        return _ChatBubble(
-                          message: message,
-                          guideName: persona.name,
-                          isSpeaking:
-                              message.fromGuide && voiceService.isSpeaking,
-                          onCopy: message.text.trim().isEmpty
-                              ? null
-                              : () => _copyMessage(context, message.text),
-                          onShare: message.text.trim().isEmpty
-                              ? null
-                              : () =>
-                                    _shareChatThrough(context, session, index),
-                          onSpeak:
-                              message.fromGuide &&
-                                  message.text.trim().isNotEmpty
-                              ? () => _speakGuideText(context, message.text)
-                              : null,
-                          onStopSpeaking:
-                              message.fromGuide && voiceService.isSpeaking
-                              ? voiceService.stopSpeaking
-                              : null,
-                        );
-                      },
                     ),
-            ),
-            if (_isGenerating && !streamingEnabled)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: persona.name == 'Luna'
-                            ? AppColors.sleep
-                            : AppColors.hrv,
+                    IconButton(
+                      onPressed: () => _openInfoPage(context),
+                      icon: const Icon(Icons.info_outline_rounded, size: 22),
+                      tooltip: 'Guide setup and downloads',
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${persona.name} is thinking...',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
                     ),
                   ],
                 ),
               ),
-            if (manager.runtimeDebugEnabled)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: _RuntimeDebugCard(runtimeService: _runtimeService),
+              if (activeGuideKinds.length > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                  child: _GuideSelector(
+                    selectedGuide: selectedGuide,
+                    onGuideChanged: (guide) {
+                      store.selectGuide(guide);
+                      _runtimeService.offload();
+                    },
+                  ),
+                ),
+              if (!hasUserMessage) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                  child: _GuideHeroCard(persona: persona),
+                ),
+                const SizedBox(height: 6),
+              ] else ...[
+                const SizedBox(height: 6),
+              ],
+              Expanded(
+                child: session == null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (manager.globalError != null) ...[
+                              Icon(
+                                Icons.error_outline_rounded,
+                                size: 48,
+                                color: AppColors.error,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Something went wrong',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                manager.globalError!,
+                                style: Theme.of(context).textTheme.bodySmall,
+                                textAlign: TextAlign.center,
+                              ),
+                            ] else if (!manager
+                                .stateFor(selectedGuide)
+                                .isReady) ...[
+                              Icon(
+                                Icons.download_outlined,
+                                size: 48,
+                                color: isDark
+                                    ? AppColors.textSecondaryDark
+                                    : AppColors.textSecondaryLight,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Download ${persona.name} to start chatting',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Go to Guide Setup to download the AI model',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ] else ...[
+                              Icon(
+                                Icons.chat_bubble_outline_rounded,
+                                size: 48,
+                                color: isDark
+                                    ? AppColors.textSecondaryDark
+                                    : AppColors.textSecondaryLight,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Start a new chat with ${persona.name}',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed: () => store.startNewSession(),
+                                icon: const Icon(Icons.add_comment_rounded),
+                                label: const Text('Start New Chat'),
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _messagesScrollController,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        itemCount: session.messages.length,
+                        itemBuilder: (context, index) {
+                          final message = session.messages[index];
+                          return _ChatBubble(
+                            message: message,
+                            guideName: persona.name,
+                            isSpeaking:
+                                message.fromGuide && voiceService.isSpeaking,
+                            onCopy: message.text.trim().isEmpty
+                                ? null
+                                : () => _copyMessage(context, message.text),
+                            onShare: message.text.trim().isEmpty
+                                ? null
+                                : () => _shareChatThrough(
+                                    context,
+                                    session,
+                                    index,
+                                  ),
+                            onSpeak:
+                                message.fromGuide &&
+                                    message.text.trim().isNotEmpty
+                                ? () => _speakGuideText(context, message.text)
+                                : null,
+                            onStopSpeaking:
+                                message.fromGuide && voiceService.isSpeaking
+                                ? voiceService.stopSpeaking
+                                : null,
+                          );
+                        },
+                      ),
               ),
-            _ComposerBar(
-              controller: _composerController,
-              enabled:
-                  manager.stateFor(selectedGuide).isReady &&
-                  session != null &&
-                  !_isGenerating,
-              isRecording: voiceService.isRecording,
-              isTranscribing: voiceService.isTranscribing,
-              guideName: persona.name,
-              hintText: _composerHint(
-                selectedGuide,
-                modelReady: manager.stateFor(selectedGuide).isReady,
-                hasSession: session != null,
+              if (_isGenerating && !streamingEnabled)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: persona.name == 'Luna'
+                              ? AppColors.sleep
+                              : AppColors.hrv,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${persona.name} is thinking...',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              if (manager.runtimeDebugEnabled)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: _RuntimeDebugCard(runtimeService: _runtimeService),
+                ),
+              _ComposerBar(
+                controller: _composerController,
+                enabled:
+                    manager.stateFor(selectedGuide).isReady &&
+                    session != null &&
+                    !_isGenerating,
+                isRecording: voiceService.isRecording,
+                isTranscribing: voiceService.isTranscribing,
+                guideName: persona.name,
+                hintText: _composerHint(
+                  selectedGuide,
+                  modelReady: manager.stateFor(selectedGuide).isReady,
+                  hasSession: session != null,
+                ),
+                onVoicePrompt: () => _toggleVoicePrompt(context),
+                onSend: (text) => _sendMessage(text, store, selectedGuide),
               ),
-              onVoicePrompt: () => _toggleVoicePrompt(context),
-              onSend: (text) => _sendMessage(text, store, selectedGuide),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -960,34 +989,48 @@ class _ChatBubble extends StatelessWidget {
               MarkdownBody(
                 data: message.text,
                 selectable: true,
-                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                  p: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4),
-                  strong: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    height: 1.4,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  em: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    height: 1.4,
-                    fontStyle: FontStyle.italic,
-                  ),
-                  code: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                    backgroundColor: Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.cardDark
-                        : AppColors.cardLight,
-                  ),
-                  blockquote: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    height: 1.4,
-                    fontStyle: FontStyle.italic,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight,
-                  ),
-                  listBullet: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4),
-                  h1: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                  h2: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                  h3: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
+                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
+                    .copyWith(
+                      p: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(height: 1.4),
+                      strong: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        height: 1.4,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      em: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        height: 1.4,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      code: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        backgroundColor:
+                            Theme.of(context).brightness == Brightness.dark
+                            ? AppColors.cardDark
+                            : AppColors.cardLight,
+                      ),
+                      blockquote: Theme.of(context).textTheme.bodyMedium
+                          ?.copyWith(
+                            height: 1.4,
+                            fontStyle: FontStyle.italic,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? AppColors.textSecondaryDark
+                                : AppColors.textSecondaryLight,
+                          ),
+                      listBullet: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(height: 1.4),
+                      h1: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      h2: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      h3: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
               ),
             const SizedBox(height: 8),
             Row(
@@ -1052,31 +1095,30 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-
 String _plainTextForExport(String text) {
   var clean = text;
-  
+
   // Remove headers
   clean = clean.replaceAll(RegExp(r'^#+\s+', multiLine: true), '');
-  
+
   // Remove links but keep text
   clean = clean.replaceAll(RegExp(r'\[(.*?)\]\(.*?\)'), r'$1');
-  
+
   // Remove bold/italics
   clean = clean.replaceAll(RegExp(r'\*\*(.*?)\*\*'), r'$1');
   clean = clean.replaceAll(RegExp(r'\*(.*?)\*'), r'$1');
   clean = clean.replaceAll(RegExp(r'__(.*?)__'), r'$1');
   clean = clean.replaceAll(RegExp(r'_(.*?)_'), r'$1');
-  
+
   // Remove strikethrough
   clean = clean.replaceAll(RegExp(r'~~(.*?)~~'), r'$1');
-  
+
   // Remove inline code
   clean = clean.replaceAll(RegExp(r'`(.*?)`'), r'$1');
-  
+
   // Remove blockquotes
   clean = clean.replaceAll(RegExp(r'^\s*>\s*', multiLine: true), '');
-  
+
   return clean.trim();
 }
 
@@ -1196,7 +1238,9 @@ class _ComposerBar extends StatelessWidget {
                           ),
                     tooltip: isTranscribing
                         ? 'Transcribing voice prompt'
-                        : (isRecording ? 'Stop recording' : 'Record voice prompt'),
+                        : (isRecording
+                              ? 'Stop recording'
+                              : 'Record voice prompt'),
                   ),
                   IconButton(
                     onPressed: enabled && !isRecording ? _handleSend : null,
@@ -1230,9 +1274,10 @@ class _RecordingIndicatorState extends State<_RecordingIndicator>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.4,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -1559,116 +1604,119 @@ class GuideInfoScreen extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark
-          ? AppColors.backgroundDark
-          : AppColors.backgroundLight,
       appBar: AppBar(title: const Text('Guide Setup')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: manager.runtimeDebugEnabled,
-              onChanged: manager.setRuntimeDebugEnabled,
-              title: const Text('Runtime Debug'),
-              subtitle: const Text(
-                'Show the model file, timings, and last runtime error on Luna and Nova.',
-              ),
-            ),
-            if (!Platform.isIOS)
+      body: Container(
+        decoration: BoxDecoration(gradient: AppColors.screenGradient(isDark)),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            children: [
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
-                value: manager.streamingEnabled,
-                onChanged: manager.setStreamingEnabled,
-                title: const Text('Streaming Responses'),
+                value: manager.runtimeDebugEnabled,
+                onChanged: manager.setRuntimeDebugEnabled,
+                title: const Text('Runtime Debug'),
                 subtitle: const Text(
-                  'Show replies as they arrive. Turn this off to wait for the full response and show the thinking state above the composer.',
+                  'Show the model file, timings, and last runtime error on Luna and Nova.',
                 ),
               ),
-            const SizedBox(height: 12),
-            _GuideVoiceSettingsCard(voiceService: voiceService, isDark: isDark),
-            const SizedBox(height: 12),
-            for (var index = 0; index < activeGuideKinds.length; index++) ...[
-              _GuideSetupCard(
-                guide: activeGuideKinds[index],
-                manager: manager,
+              if (!Platform.isIOS)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: manager.streamingEnabled,
+                  onChanged: manager.setStreamingEnabled,
+                  title: const Text('Streaming Responses'),
+                  subtitle: const Text(
+                    'Show replies as they arrive. Turn this off to wait for the full response and show the thinking state above the composer.',
+                  ),
+                ),
+              const SizedBox(height: 12),
+              _GuideVoiceSettingsCard(
+                voiceService: voiceService,
                 isDark: isDark,
               ),
-              if (index < activeGuideKinds.length - 1)
+              const SizedBox(height: 12),
+              for (var index = 0; index < activeGuideKinds.length; index++) ...[
+                _GuideSetupCard(
+                  guide: activeGuideKinds[index],
+                  manager: manager,
+                  isDark: isDark,
+                ),
+                if (index < activeGuideKinds.length - 1)
+                  const SizedBox(height: 16),
+              ],
+              if (manager.runtimeDebugEnabled) ...[
                 const SizedBox(height: 16),
-            ],
-            if (manager.runtimeDebugEnabled) ...[
+                _RuntimeDebugCard(runtimeService: runtimeService),
+              ],
               const SizedBox(height: 16),
-              _RuntimeDebugCard(runtimeService: runtimeService),
-            ],
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.cardDark : AppColors.cardLight,
-                borderRadius: BorderRadius.circular(AppConstants.radiusXL),
-                border: Border.all(
-                  color: isDark
-                      ? AppColors.cardBorderDark
-                      : AppColors.cardBorderLight,
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.cardDark : AppColors.cardLight,
+                  borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+                  border: Border.all(
+                    color: isDark
+                        ? AppColors.cardBorderDark
+                        : AppColors.cardBorderLight,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Saved Chats',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Delete locally stored sessions if you want a clean slate or a lighter backup.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(height: 1.4),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _confirmClearChats(
+                            context,
+                            store,
+                            guide: GuideKind.luna,
+                          ),
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          label: const Text('Clear Luna chats'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _confirmClearChats(
+                            context,
+                            store,
+                            guide: GuideKind.nova,
+                          ),
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          label: const Text('Clear Nova chats'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () => _confirmClearChats(context, store),
+                          icon: const Icon(Icons.delete_sweep_rounded),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.error,
+                          ),
+                          label: const Text('Clear all chats'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Saved Chats',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Delete locally stored sessions if you want a clean slate or a lighter backup.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () => _confirmClearChats(
-                          context,
-                          store,
-                          guide: GuideKind.luna,
-                        ),
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('Clear Luna chats'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () => _confirmClearChats(
-                          context,
-                          store,
-                          guide: GuideKind.nova,
-                        ),
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('Clear Nova chats'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: () => _confirmClearChats(context, store),
-                        icon: const Icon(Icons.delete_sweep_rounded),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.error,
-                        ),
-                        label: const Text('Clear all chats'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _GuideStorageInfoCard(manager: manager, isDark: isDark),
-          ],
+              const SizedBox(height: 16),
+              _GuideStorageInfoCard(manager: manager, isDark: isDark),
+            ],
+          ),
         ),
       ),
     );
@@ -1777,9 +1825,7 @@ class _GuideVoiceSettingsCard extends StatelessWidget {
                     size: 18,
                   ),
                   label: Text(
-                    voiceService.isSpeaking
-                        ? 'Stop preview'
-                        : 'Preview voice',
+                    voiceService.isSpeaking ? 'Stop preview' : 'Preview voice',
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1827,9 +1873,13 @@ class _GuideVoiceSettingsCard extends StatelessWidget {
                     LinearProgressIndicator(
                       value: progress > 0 ? progress : null,
                       minHeight: 8,
-                      borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+                      borderRadius: BorderRadius.circular(
+                        AppConstants.radiusFull,
+                      ),
                       color: AppColors.primary,
-                      backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                      backgroundColor: AppColors.primary.withValues(
+                        alpha: 0.12,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(

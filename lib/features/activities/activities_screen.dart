@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/health_provider.dart';
@@ -331,53 +332,75 @@ final List<Activity> sleepActivities = [
 class ActivitiesScreen extends ConsumerWidget {
   const ActivitiesScreen({super.key});
 
+  void _goBackOrHome(BuildContext context) {
+    if (GoRouter.of(context).canPop()) {
+      context.pop();
+      return;
+    }
+    context.go('/');
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // Header
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Text(
-                  'Activities',
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
+      body: Container(
+        decoration: BoxDecoration(gradient: AppColors.screenGradient(isDark)),
+        child: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              // Header
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                        onPressed: () => _goBackOrHome(context),
+                        tooltip: 'Back',
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Activities',
+                          style: Theme.of(context).textTheme.headlineLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
 
-            // Mindfulness Section
-            _buildSectionHeader(context, 'Mindfulness', isDark),
-            _buildActivityList(context, mindfulnessActivities, isDark),
+              // Mindfulness Section
+              _buildSectionHeader(context, 'Mindfulness', isDark),
+              _buildActivityList(context, mindfulnessActivities, isDark),
 
-            // Breathwork Section
-            _buildSectionHeader(context, 'Breathwork', isDark),
-            _buildActivityList(context, breathworkActivities, isDark),
+              // Breathwork Section
+              _buildSectionHeader(context, 'Breathwork', isDark),
+              _buildActivityList(context, breathworkActivities, isDark),
 
-            // Fitness & Movement Section
-            _buildSectionHeader(context, 'Fitness & Movement', isDark),
-            _buildActivityList(context, fitnessActivities, isDark),
+              // Fitness & Movement Section
+              _buildSectionHeader(context, 'Fitness & Movement', isDark),
+              _buildActivityList(context, fitnessActivities, isDark),
 
-            // Water Sports Section
-            _buildSectionHeader(context, 'Water Sports', isDark),
-            _buildActivityList(context, waterActivities, isDark),
+              // Water Sports Section
+              _buildSectionHeader(context, 'Water Sports', isDark),
+              _buildActivityList(context, waterActivities, isDark),
 
-            // Intimacy & Connection Section
-            _buildSectionHeader(context, 'Intimacy & Connection', isDark),
-            _buildActivityList(context, intimacyActivities, isDark),
+              // Intimacy & Connection Section
+              _buildSectionHeader(context, 'Intimacy & Connection', isDark),
+              _buildActivityList(context, intimacyActivities, isDark),
 
-            // Sleep Preparation Section
-            _buildSectionHeader(context, 'Sleep Preparation', isDark),
-            _buildActivityList(context, sleepActivities, isDark),
+              // Sleep Preparation Section
+              _buildSectionHeader(context, 'Sleep Preparation', isDark),
+              _buildActivityList(context, sleepActivities, isDark),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 40)),
-          ],
+              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+            ],
+          ),
         ),
       ),
     );
@@ -391,31 +414,34 @@ class ActivitiesScreen extends ConsumerWidget {
           title,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
-            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+            color: isDark
+                ? AppColors.textPrimaryDark
+                : AppColors.textPrimaryLight,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildActivityList(BuildContext context, List<Activity> activities, bool isDark) {
+  Widget _buildActivityList(
+    BuildContext context,
+    List<Activity> activities,
+    bool isDark,
+  ) {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final activity = activities[index];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _ActivityCard(
-                activity: activity,
-                isDark: isDark,
-                onTap: () => _startActivity(context, activity),
-              ),
-            );
-          },
-          childCount: activities.length,
-        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final activity = activities[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _ActivityCard(
+              activity: activity,
+              isDark: isDark,
+              onTap: () => _startActivity(context, activity),
+            ),
+          );
+        }, childCount: activities.length),
       ),
     );
   }
@@ -483,7 +509,9 @@ class _ActivityCard extends StatelessWidget {
                   Text(
                     activity.subtitle,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                      color: isDark
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondaryLight,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -492,11 +520,19 @@ class _ActivityCard extends StatelessWidget {
                   // Duration and metrics row
                   Row(
                     children: [
-                      Icon(Icons.timer_outlined, size: 12, color: activity.color),
+                      Icon(
+                        Icons.timer_outlined,
+                        size: 12,
+                        color: activity.color,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '${activity.defaultDuration} min',
-                        style: TextStyle(fontSize: 11, color: activity.color, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: activity.color,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       // Metrics - wrap in Flexible to prevent overflow
@@ -504,17 +540,31 @@ class _ActivityCard extends StatelessWidget {
                         child: Wrap(
                           spacing: 4,
                           runSpacing: 2,
-                          children: activity.metrics.take(2).map((m) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: activity.color.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              m,
-                              style: TextStyle(fontSize: 9, color: activity.color, fontWeight: FontWeight.w500),
-                            ),
-                          )).toList(),
+                          children: activity.metrics
+                              .take(2)
+                              .map(
+                                (m) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: activity.color.withValues(
+                                      alpha: 0.1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    m,
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      color: activity.color,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                         ),
                       ),
                     ],
@@ -542,7 +592,8 @@ class ActivitySessionSheet extends ConsumerStatefulWidget {
   const ActivitySessionSheet({super.key, required this.activity});
 
   @override
-  ConsumerState<ActivitySessionSheet> createState() => _ActivitySessionSheetState();
+  ConsumerState<ActivitySessionSheet> createState() =>
+      _ActivitySessionSheetState();
 }
 
 class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
@@ -551,7 +602,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
   bool _isPaused = false;
   Timer? _timer;
   int _elapsedSeconds = 0;
-  
+
   final List<Map<String, dynamic>> _hrData = [];
   final List<Map<String, dynamic>> _hrvData = [];
 
@@ -572,9 +623,9 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
       _isRunning = true;
       _isPaused = false;
     });
-    
+
     RingPlugin.startHeartRate();
-    
+
     RingPlugin.rawHealthData.listen((data) {
       if (data['type'] == 'heartRate') {
         final hr = data['heartRate'] as int? ?? 0;
@@ -587,13 +638,13 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
         }
       }
     });
-    
+
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!_isPaused && mounted) {
         setState(() {
           _elapsedSeconds++;
         });
-        
+
         if (_elapsedSeconds >= _durationMinutes * 60) {
           _completeSession();
         }
@@ -610,7 +661,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
   void _stopSession() {
     _timer?.cancel();
     RingPlugin.stopHeartRate();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -636,9 +687,9 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
   void _completeSession() {
     _timer?.cancel();
     RingPlugin.stopHeartRate();
-    
+
     Navigator.pop(context);
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -666,7 +717,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
     final padding = MediaQuery.of(context).padding;
     final currentHR = ref.watch(heartRateProvider)['heartRate'] as int? ?? 0;
     final currentHRV = ref.watch(heartRateProvider)['hrv'] as int? ?? 0;
-    
+
     final maxHeight = size.height - padding.top - 20;
     final sheetHeight = min(maxHeight * 0.9, 650.0);
 
@@ -689,7 +740,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            
+
             // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -717,7 +768,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
                 ],
               ),
             ),
-            
+
             Expanded(
               child: !_isRunning
                   ? _buildDurationSelector(isDark)
@@ -731,7 +782,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
 
   Widget _buildDurationSelector(bool isDark) {
     final durations = [3, 5, 10, 15, 20, 30, 45, 60];
-    
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -741,7 +792,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 24),
-          
+
           // Responsive duration chips using Wrap
           Wrap(
             spacing: 8,
@@ -762,9 +813,9 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
               );
             }).toList(),
           ),
-          
+
           const Spacer(),
-          
+
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -786,7 +837,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 360;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
@@ -804,7 +855,7 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Live metrics - Responsive layout
               if (isNarrow)
                 Column(
@@ -853,9 +904,9 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
                       ),
                   ],
                 ),
-              
+
               const SizedBox(height: 48),
-              
+
               // Controls
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -864,7 +915,12 @@ class _ActivitySessionSheetState extends ConsumerState<ActivitySessionSheet> {
                     heroTag: 'pause',
                     onPressed: _pauseSession,
                     backgroundColor: AppColors.primary,
-                    child: Icon(_isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 32),
+                    child: Icon(
+                      _isPaused
+                          ? Icons.play_arrow_rounded
+                          : Icons.pause_rounded,
+                      size: 32,
+                    ),
                   ),
                   const SizedBox(width: 32),
                   FloatingActionButton.large(
@@ -952,10 +1008,12 @@ class _SessionSummarySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final avgHR = hrData.isNotEmpty
-        ? hrData.map((e) => e['value'] as int).reduce((a, b) => a + b) ~/ hrData.length
+        ? hrData.map((e) => e['value'] as int).reduce((a, b) => a + b) ~/
+              hrData.length
         : 0;
     final avgHRV = hrvData.isNotEmpty
-        ? hrvData.map((e) => e['value'] as int).reduce((a, b) => a + b) ~/ hrvData.length
+        ? hrvData.map((e) => e['value'] as int).reduce((a, b) => a + b) ~/
+              hrvData.length
         : 0;
     final mins = duration ~/ 60;
     final secs = duration % 60;
@@ -987,13 +1045,16 @@ class _SessionSummarySheet extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.check_circle_rounded, size: 56, color: AppColors.success),
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 56,
+                      color: AppColors.success,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       'Session Complete!',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -1002,12 +1063,12 @@ class _SessionSummarySheet extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 28),
-                    
+
                     // Stats grid - adaptive layout
                     LayoutBuilder(
                       builder: (context, constraints) {
                         final isNarrow = constraints.maxWidth < 340;
-                        
+
                         return Column(
                           children: [
                             if (isNarrow)
@@ -1076,7 +1137,7 @@ class _SessionSummarySheet extends StatelessWidget {
                         );
                       },
                     ),
-                    
+
                     const SizedBox(height: 28),
                     SizedBox(
                       width: double.infinity,
@@ -1124,15 +1185,12 @@ class _SummaryStat extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               value,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 2),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
       ),
@@ -1174,10 +1232,7 @@ class _SummaryStatFull extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                Text(label, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),

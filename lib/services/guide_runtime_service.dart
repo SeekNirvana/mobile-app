@@ -95,11 +95,13 @@ class GuideRuntimeService {
   Future<String> generateResponse({
     required GuideKind guide,
     required List<GuideChatMessage> messages,
+    String? userOverride,
   }) async {
     var finalResponse = '';
     await for (final partial in streamResponse(
       guide: guide,
       messages: messages,
+      userOverride: userOverride,
     )) {
       finalResponse = partial;
     }
@@ -110,6 +112,7 @@ class GuideRuntimeService {
   Stream<String> streamResponse({
     required GuideKind guide,
     required List<GuideChatMessage> messages,
+    String? userOverride,
   }) async* {
     debugPrint('Generating response for guide: $guide');
 
@@ -124,10 +127,17 @@ class GuideRuntimeService {
 
     try {
       // Get the last user message
-      final lastUserMessage = messages.lastWhere(
-        (m) => m.role == GuideChatMessageRole.user,
-        orElse: () => messages.last,
-      );
+      final lastUserMessage = userOverride != null
+          ? GuideChatMessage(
+              id: 'runtime-override',
+              role: GuideChatMessageRole.user,
+              text: userOverride,
+              timestamp: DateTime.now(),
+            )
+          : messages.lastWhere(
+              (m) => m.role == GuideChatMessageRole.user,
+              orElse: () => messages.last,
+            );
 
       debugPrint(
         'Sending: ${lastUserMessage.text.substring(0, lastUserMessage.text.length > 30 ? 30 : lastUserMessage.text.length)}...',
