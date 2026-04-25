@@ -10,6 +10,9 @@ import 'package:seeknirvana/features/profile/profile_screen.dart';
 import 'package:seeknirvana/features/profile/capabilities_screen.dart';
 import 'package:seeknirvana/features/profile/about_screen.dart';
 import 'package:seeknirvana/features/scan/scan_screen.dart';
+import 'package:seeknirvana/features/rewards/rewards_screen.dart';
+import 'package:seeknirvana/features/rewards/wallet_screen.dart';
+import 'package:seeknirvana/features/rewards/badge_gallery_screen.dart';
 import 'package:seeknirvana/services/guide_model_manager.dart';
 import 'package:seeknirvana/shared/widgets/app_scaffold.dart';
 
@@ -67,6 +70,21 @@ final router = GoRouter(
           path: '/profile',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: ProfileScreen()),
+        ),
+        GoRoute(
+          path: '/rewards',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: RewardsScreen()),
+        ),
+        GoRoute(
+          path: '/wallet',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: WalletScreen()),
+        ),
+        GoRoute(
+          path: '/badges',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: BadgeGalleryScreen()),
         ),
         GoRoute(
           path: '/capabilities',

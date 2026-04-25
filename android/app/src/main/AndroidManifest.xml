@@ -66,6 +66,8 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
+        <package android:name="app.phantom"/>
+        <package android:name="com.solflare.mobile"/>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

@@ -1,0 +1,32 @@
+Analyzing mobile-app...                                         
+
+  error • Target of URI doesn't exist: '../../providers/gamification_provider.dart' • lib/features/home/home_screen.dart:9:8 • uri_does_not_exist
+  error • Undefined name 'currentLevelProvider' • lib/features/home/home_screen.dart:91:47 • undefined_identifier
+  error • Undefined name 'currentStreakProvider' • lib/features/home/home_screen.dart:92:48 • undefined_identifier
+  error • Undefined name 'totalXPProvider' • lib/features/home/home_screen.dart:93:44 • undefined_identifier
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/profile/capabilities_screen.dart:300:35 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/profile/capabilities_screen.dart:315:34 • deprecated_member_use
+  error • Target of URI doesn't exist: '../../core/constants/achievements.dart' • lib/features/rewards/rewards_screen.dart:6:8 • uri_does_not_exist
+  error • Target of URI doesn't exist: '../../providers/gamification_provider.dart' • lib/features/rewards/rewards_screen.dart:8:8 • uri_does_not_exist
+  error • Undefined name 'currentLevelProvider' • lib/features/rewards/rewards_screen.dart:22:36 • undefined_identifier
+  error • Undefined name 'totalXPProvider' • lib/features/rewards/rewards_screen.dart:23:31 • undefined_identifier
+  error • Undefined name 'levelProgressProvider' • lib/features/rewards/rewards_screen.dart:24:32 • undefined_identifier
+  error • Undefined name 'currentStreakProvider' • lib/features/rewards/rewards_screen.dart:25:30 • undefined_identifier
+  error • Undefined name 'streakMultiplierLabelProvider' • lib/features/rewards/rewards_screen.dart:26:40 • undefined_identifier
+  error • Undefined class 'NirvanaLevel' • lib/features/rewards/rewards_screen.dart:108:5 • undefined_class
+  error • The named parameter 'appKit' is required, but there's no corresponding argument • lib/features/rewards/rewards_screen.dart:244:11 • missing_required_argument
+  error • Undefined name 'unlockedAchievementsProvider' • lib/features/rewards/rewards_screen.dart:279:35 • undefined_identifier
+  error • Undefined name 'AchievementCatalog' • lib/features/rewards/rewards_screen.dart:290:18 • undefined_identifier
+  error • Undefined name 'AchievementCatalog' • lib/features/rewards/rewards_screen.dart:292:29 • undefined_identifier
+warning • Unused import: 'package:flutter_riverpod/flutter_riverpod.dart' • lib/providers/theme_provider.dart:2:8 • unused_import
+  error • The function 'ChangeNotifierProvider' isn't defined • lib/providers/wallet_provider.dart:13:29 • undefined_function
+  error • The function 'StateProvider' isn't defined • lib/providers/wallet_provider.dart:19:31 • undefined_function
+  error • The function 'StateProvider' isn't defined • lib/providers/wallet_provider.dart:27:28 • undefined_function
+  error • The function 'StateProvider' isn't defined • lib/providers/wallet_provider.dart:28:34 • undefined_function
+   info • The imported package 'http' isn't a dependency of the importing package • lib/services/api_client.dart:3:8 • depend_on_referenced_packages
+  error • The constructor being called isn't a const constructor • lib/services/reown_service.dart:35:23 • const_with_non_const
+   info • 'email' is deprecated and shouldn't be used. Please use AppKitSocialOption.Email in `socials` list to enable Email Login • lib/services/reown_service.dart:36:9 • deprecated_member_use
+  error • The getter 'address' isn't defined for the type 'ReownAppKitModalSession' • lib/services/reown_service.dart:51:31 • undefined_getter
+  error • The argument type 'Ref' can't be assigned to the parameter type 'WidgetRef'.  • lib/services/reown_service.dart:67:23 • argument_type_not_assignable
+
+28 issues found. (ran in 5.2s)

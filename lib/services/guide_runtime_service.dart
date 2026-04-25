@@ -123,7 +123,16 @@ class GuideRuntimeService {
       throw StateError('Failed to initialize chat');
     }
 
+    // Prevent concurrent generation which causes native crashes
+    if (_isGenerating) {
+      throw StateError('Generation already in progress');
+    }
     _isGenerating = true;
+
+    // iOS: Add delay before generation to avoid race conditions with session setup
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
 
     try {
       // Get the last user message
@@ -144,23 +153,34 @@ class GuideRuntimeService {
       );
       _lastPromptCharCount = lastUserMessage.text.length;
 
-      // Add message to chat
-      await _activeChat!.addQueryChunk(
-        Message.text(text: lastUserMessage.text, isUser: true),
-      );
+      // Add message to chat with error handling
+      try {
+        await _activeChat!.addQueryChunk(
+          Message.text(text: lastUserMessage.text, isUser: true),
+        );
+      } catch (e) {
+        debugPrint('Error adding query chunk: $e');
+        throw StateError('Failed to add message to chat: $e');
+      }
 
       final stopwatch = Stopwatch()..start();
       var responseText = '';
 
+      // iOS: Use sync response to avoid EXC_BAD_ACCESS in DartWorker thread
+      // The async stream has race conditions in flutter_gemma's native iOS implementation
       if (defaultTargetPlatform == TargetPlatform.iOS) {
-        // iOS is currently unstable in flutter_gemma's native async token stream.
-        // Use the stable sync response path and return the full response at once.
-        final response = await _activeChat!.generateChatResponse();
-        if (response is! TextResponse) {
-          throw StateError('Unexpected response type');
+        debugPrint('Using sync response generation for iOS stability');
+        try {
+          final response = await _activeChat!.generateChatResponse();
+          if (response is! TextResponse) {
+            throw StateError('Unexpected response type: ${response.runtimeType}');
+          }
+          responseText = response.token.trimRight();
+          yield responseText;
+        } catch (e) {
+          debugPrint('Sync generation error: $e');
+          rethrow;
         }
-        responseText = response.token.trimRight();
-        yield responseText;
       } else {
         final buffer = StringBuffer();
         await for (final response in _activeChat!.generateChatResponseAsync()) {
@@ -184,8 +204,16 @@ class GuideRuntimeService {
         'Response: ${responseText.substring(0, responseText.length > 30 ? 30 : responseText.length)}...',
       );
       _lastResponseCharCount = responseText.length;
-      _lastPromptTokenCount = await _safeCountTokens(lastUserMessage.text);
-      _lastResponseTokenCount = await _safeCountTokens(responseText);
+      
+      // Safely count tokens with error handling
+      try {
+        _lastPromptTokenCount = await _safeCountTokens(lastUserMessage.text);
+        _lastResponseTokenCount = await _safeCountTokens(responseText);
+      } catch (e) {
+        debugPrint('Token counting error (non-fatal): $e');
+        _lastPromptTokenCount = null;
+        _lastResponseTokenCount = null;
+      }
       _lastError = null;
     } catch (e, stack) {
       debugPrint('Error generating response: $e');
@@ -199,6 +227,21 @@ class GuideRuntimeService {
 
   /// Offload and free resources
   Future<void> offload() async {
+    // Wait for any ongoing generation to complete
+    if (_isGenerating) {
+      debugPrint('Waiting for generation to complete before offload...');
+      var attempts = 0;
+      while (_isGenerating && attempts < 50) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        attempts++;
+      }
+    }
+
+    // iOS: Add delay before cleanup to ensure native resources are released
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
     _activeChat = null;
     _activeGuide = null;
     _isGenerating = false;
@@ -206,6 +249,11 @@ class GuideRuntimeService {
     _currentModel = null;
     _activeModelPath = null;
     _activeModelFileType = null;
+    
+    // iOS: Add delay after cleanup to ensure complete resource release
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
   }
 
   /// Dispose and cleanup all resources
@@ -216,17 +264,32 @@ class GuideRuntimeService {
   Future<void> _loadGuideModel(GuidePersonaDefinition definition) async {
     await _ensureGuideModelReady(definition);
 
+    // iOS: Add delay before model creation to ensure any previous cleanup is complete
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
     _currentModel = await FlutterGemma.getActiveModel(
       maxTokens: _maxTokensForCurrentPlatform(),
       preferredBackend: _preferredBackendFor(definition),
     );
     debugPrint('Loaded active model for ${definition.name}');
 
+    // iOS: Add delay between model creation and chat session creation
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
     _activeChat = await _currentModel!.createChat(
       modelType: definition.flutterGemmaModelType,
       systemInstruction: definition.systemPrompt,
     );
     debugPrint('Created chat session for ${definition.name}');
+
+    // iOS: Add delay after chat creation to ensure session is fully initialized
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
 
     _activeGuide = definition.kind;
   }

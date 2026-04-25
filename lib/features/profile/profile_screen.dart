@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/constants/achievements.dart';
 import '../../providers/ring_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/gamification_provider.dart';
 import '../../plugins/ring_sdk/ring_plugin.dart';
 import '../../plugins/ring_sdk/models/ring_connection_state.dart';
 import '../../services/feature_detection_service.dart';
@@ -110,6 +112,10 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+              
+              // Rewards Summary Card (moved from Home)
+              _buildRewardsSummaryCard(context, ref, isDark),
               const SizedBox(height: 16),
 
               _SectionCard(
@@ -269,6 +275,29 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               if (FeatureDetectionService.hasExtendedFeatures)
                 const SizedBox(height: 16),
+
+              _SectionCard(
+                title: 'Wallet & Rewards',
+                subtitle: r'Manage your connected Solana wallet, $NIRV tokens, and NFT achievement badges.',
+                child: Column(
+                  children: [
+                    _SettingTile(
+                      icon: Icons.account_balance_wallet_rounded,
+                      label: 'Solana Wallet',
+                      subtitle: 'View balance, disconnect, or switch wallets',
+                      onTap: () => context.push('/wallet'),
+                    ),
+                    const Divider(height: 24),
+                    _SettingTile(
+                      icon: Icons.workspace_premium_rounded,
+                      label: 'Achievement Badges',
+                      subtitle: 'View your minted cNFT rewards',
+                      onTap: () => context.push('/badges'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
 
               _SectionCard(
                 title: 'Preferences',
@@ -773,6 +802,127 @@ class _CapabilitySummary extends StatelessWidget {
 
 // Extension methods for ProfileScreen
 extension on ProfileScreen {
+  Achievement? _getNextAchievement(List<String> unlockedIds) {
+    for (final achievement in AchievementCatalog.all) {
+      if (!unlockedIds.contains(achievement.id)) {
+        return achievement;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildRewardsSummaryCard(BuildContext context, WidgetRef ref, bool isDark) {
+    final level = ref.watch(currentLevelProvider);
+    final streak = ref.watch(currentStreakProvider);
+    final xp = ref.watch(totalXPProvider);
+    final unlockedIds = ref.watch(unlockedAchievementsProvider);
+    final nextAchievement = _getNextAchievement(unlockedIds);
+    
+    return GestureDetector(
+      onTap: () => context.push('/rewards'),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+          border: Border.all(
+            color: level.color.withValues(alpha: 0.3),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: level.color.withValues(alpha: 0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: level.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(level.emoji, style: const TextStyle(fontSize: 24)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Level ${level.level} • ${level.title}',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: level.color,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$xp XP • $streak day streak 🔥',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, 
+                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+              ],
+            ),
+            if (nextAchievement != null) ...[
+              const SizedBox(height: 16),
+              const Divider(height: 1),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: nextAchievement.rarityColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      nextAchievement.emoji,
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Next: ${nextAchievement.title}',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: 0.3, // TODO: Calculate actual progress
+                            minHeight: 6,
+                            backgroundColor: (isDark ? Colors.grey : Colors.grey).withValues(alpha: 0.2),
+                            color: nextAchievement.rarityColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
   void _showProfileSettings(
     BuildContext context,
     ProfilePreferencesService preferences,

@@ -1,7 +1,7 @@
 name: seeknirvana
 description: "SeekNirvana Smart Ring Health App"
 publish_to: 'none'
-version: 0.1.1+1
+version: 0.1.2+2
 
 environment:
   sdk: ^3.11.0
@@ -26,10 +26,14 @@ dependencies:
   sqflite: ^2.4.2
   flutter_gemma: ^0.13.2
   record: ^6.2.0
-  share_plus: ^13.1.0
+  share_plus: ^12.0.2
+  lottie: ^3.3.0
   whisper_ggml_plus: ^1.5.2
   whisper_ggml_plus_ffmpeg: ^1.0.0
   flutter_markdown_plus: ^1.0.7
+  reown_appkit: ^1.6.0
+  http: ^1.6.0
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -39,6 +43,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - .env
     - assets/SeekNirvana_Logo.png
     - assets/branding/seeknirvana_mark.png
     - assets/branding/seeknirvana_icon_master.png

@@ -3,14 +3,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/constants/achievements.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/health_provider.dart';
 import '../../providers/ring_provider.dart';
+import '../../providers/gamification_provider.dart';
 import '../../shared/widgets/brand_seal.dart';
 import '../../shared/widgets/connection_indicator.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
+
+  Achievement? _getNextAchievement(List<String> unlockedIds) {
+    for (final achievement in AchievementCatalog.all) {
+      if (!unlockedIds.contains(achievement.id)) {
+        return achievement;
+      }
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

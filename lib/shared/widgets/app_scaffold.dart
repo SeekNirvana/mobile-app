@@ -19,7 +19,10 @@ class AppScaffold extends StatelessWidget {
     }
     if (location.startsWith('/profile') ||
         location.startsWith('/capabilities') ||
-        location.startsWith('/about')) {
+        location.startsWith('/about') ||
+        location.startsWith('/rewards') ||
+        location.startsWith('/wallet') ||
+        location.startsWith('/badges')) {
       return 3;
     }
     return 0;
@@ -35,7 +38,10 @@ class AppScaffold extends StatelessWidget {
         location == '/' ||
         location.startsWith('/journal') ||
         location.startsWith('/guides') ||
-        location.startsWith('/profile');
+        location.startsWith('/profile') ||
+        location.startsWith('/rewards') ||
+        location.startsWith('/wallet') ||
+        location.startsWith('/badges');
     final shouldConfirmExit =
         !canPop &&
         (location == '/' ||

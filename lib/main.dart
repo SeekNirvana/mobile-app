@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'providers/theme_provider.dart';
@@ -10,8 +11,18 @@ import 'services/app_startup_service.dart';
 import 'services/ring_data_service.dart';
 import 'services/ring_connection_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Load environment variables from .env file
+  try {
+    await dotenv.load(fileName: ".env");
+    debugPrint('[Main] Environment variables loaded from .env');
+  } catch (e) {
+    debugPrint('[Main] No .env file found or error loading: $e');
+    debugPrint('[Main] Using --dart-define or default values instead');
+  }
+  
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,

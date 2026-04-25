@@ -119,7 +119,9 @@ Future<bool> _validateGuideBundleFile(
 
   if (fileType != ModelFileType.task) {
     final fileLength = await file.length();
-    return fileLength > 1024 * 1024;
+    // Gemma models are typically > 1.5GB. A 1MB check allows severely truncated
+    // files to pass, which causes EXC_BAD_ACCESS in the C++ FlatBuffer parser.
+    return fileLength > 1500 * 1024 * 1024; 
   }
 
   final raf = await file.open();
